@@ -7,31 +7,33 @@ on:
 permissions:
   contents: read
 jobs:
-  test-and-build:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Go vet and tests
+      - name: Test and lint
         run: |
+          test -z "$(gofmt -l .)"
           go vet ./...
-          go test -race ./...
-      - name: Build both Linux architectures
+          go test -race -count=1 ./...
+      - name: Build all architectures and packages
         run: |
-          mkdir -p dist
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o dist/infrasible-agent-linux-amd64 .
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -buildvcs=false -o dist/infrasible-agent-linux-arm64 .
-          file dist/infrasible-agent-linux-*
-          cd dist
-          for arch in amd64 arm64; do
-            shasum="$(sha256sum "infrasible-agent-linux-$arch" | awk '{print $1}')"
-            printf '%s\n' "$shasum" > "infrasible-agent-linux-$arch.sha256"
-            test "$(sha256sum "infrasible-agent-linux-$arch" | awk '{print $1}')" = "$(cat "infrasible-agent-linux-$arch.sha256")"
-          done
+          sudo apt-get update -qq
+          sudo apt-get install -y rpm
+          bash scripts/package-linux.sh
+          (cd dist && sha256sum -c SHA256SUMS)
+          dpkg-deb --info dist/infrasible-agent_*_amd64.deb
+          rpm -qip dist/*.rpm
+      - name: Smoke test native binary
+        run: |
+          ./dist/infrasible-agent-linux-amd64 version --json | grep -q '"agent_version":"0.1.0"'
+          ./dist/infrasible-agent-linux-amd64 snapshot --json | grep -q '"schema_version":"1.0"'
+          timeout 5s ./dist/infrasible-agent-linux-amd64 stream --json | head -n 2 | grep -q '"host"'
       - uses: actions/upload-artifact@v4
         with:
-          name: infrasible-agent-linux
+          name: linux-packages
           path: dist/
           if-no-files-found: error
