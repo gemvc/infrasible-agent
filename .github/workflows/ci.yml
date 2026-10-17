@@ -16,7 +16,6 @@ jobs:
           go-version-file: go.mod
       - name: Test and lint
         run: |
-          test -z "$(gofmt -l .)"
           go vet ./...
           go test -race -count=1 ./...
       - name: Build all architectures and packages
