@@ -10,7 +10,7 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -38,7 +38,7 @@ jobs:
           test "$result" -eq 124
           test "$(wc -l < /tmp/agent-stream.ndjson)" -ge 2
           grep -q '"host"' /tmp/agent-stream.ndjson
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: linux-packages
           path: dist/
