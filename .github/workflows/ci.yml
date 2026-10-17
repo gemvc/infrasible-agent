@@ -1,0 +1,37 @@
+name: Agent CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Go vet and tests
+        run: |
+          go vet ./...
+          go test -race ./...
+      - name: Build both Linux architectures
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -o dist/infrasible-agent-linux-amd64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -buildvcs=false -o dist/infrasible-agent-linux-arm64 .
+          file dist/infrasible-agent-linux-*
+          cd dist
+          for arch in amd64 arm64; do
+            shasum="$(sha256sum "infrasible-agent-linux-$arch" | awk '{print $1}')"
+            printf '%s\n' "$shasum" > "infrasible-agent-linux-$arch.sha256"
+            test "$(sha256sum "infrasible-agent-linux-$arch" | awk '{print $1}')" = "$(cat "infrasible-agent-linux-$arch.sha256")"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: infrasible-agent-linux
+          path: dist/
+          if-no-files-found: error
