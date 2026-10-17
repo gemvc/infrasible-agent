@@ -1,31 +1,31 @@
 name: Agent Release
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    tags: ['v*.*.*']
 permissions:
   contents: write
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - name: Validate tag and version
-        run: |
-          test "$GITHUB_REF_NAME" = "v$(sed -n 's/^const agentVersion = "\([^"]*\)"/\1/p' version.go)"
-      - name: Test and build Linux agents
+          cache: false
+      - name: Test release source
         run: |
           go vet ./...
-          go test ./...
-          mkdir -p dist
-          for arch in amd64 arm64; do
-            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -buildvcs=false -o "dist/infrasible-agent-linux-$arch" .
-            ( cd dist && sha256sum "infrasible-agent-linux-$arch" | awk '{print $1}' > "infrasible-agent-linux-$arch.sha256" )
-          done
-      - name: Publish release
+          go test -race -count=1 ./...
+      - name: Build and verify release packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y rpm
+          bash scripts/package-linux.sh
+          (cd dist && sha256sum -c SHA256SUMS)
+          ./dist/infrasible-agent-linux-amd64 version --json | grep -F '"agent_version":"0.1.0"'
+          ./dist/infrasible-agent-linux-amd64 snapshot --json | grep -F '"schema_version":"1.0"'
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes
