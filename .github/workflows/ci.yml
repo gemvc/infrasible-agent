@@ -31,7 +31,13 @@ jobs:
         run: |
           ./dist/infrasible-agent-linux-amd64 version --json | grep -q '"agent_version":"0.1.0"'
           ./dist/infrasible-agent-linux-amd64 snapshot --json | grep -q '"schema_version":"1.0"'
-          timeout 5s ./dist/infrasible-agent-linux-amd64 stream --json | head -n 2 | grep -q '"host"'
+          set +e
+          timeout 4s ./dist/infrasible-agent-linux-amd64 stream --json > /tmp/agent-stream.ndjson
+          result=$?
+          set -e
+          test "$result" -eq 124
+          test "$(wc -l < /tmp/agent-stream.ndjson)" -ge 2
+          grep -q '"host"' /tmp/agent-stream.ndjson
       - uses: actions/upload-artifact@v4
         with:
           name: linux-packages
