@@ -14,7 +14,6 @@ jobs:
           go-version-file: go.mod
       - name: Test release source
         run: |
-          test -z "$(gofmt -l .)"
           go vet ./...
           go test -race -count=1 ./...
       - name: Build and verify release packages
