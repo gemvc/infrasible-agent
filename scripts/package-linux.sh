@@ -26,7 +26,7 @@ for target in amd64 arm64 armv7 armv6; do
   dir="$(mktemp -d)"
   install -Dm755 "dist/$binary" "$dir/infrasible-agent"
   cp LICENSE "$dir/LICENSE"
-  tar -C "$dir" -czf "dist/infrasible-agent_$VERSION_linux_$target.tar.gz" infrasible-agent LICENSE
+  tar -C "$dir" -czf "dist/infrasible-agent_${VERSION}_linux_${target}.tar.gz" infrasible-agent LICENSE
   rm -rf "$dir"
   if [[ -n "$debarch" ]] && command -v dpkg-deb >/dev/null 2>&1; then
     pkg="$(mktemp -d)"
