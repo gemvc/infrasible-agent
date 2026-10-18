@@ -1,4 +1,4 @@
-# Infrasible Agent v0.3.0 — Operations
+# Infrasible Agent v0.3.1 — Operations
 
 > Test and staging only. This is a local daemon/runbook, **not a certificate of central Bridge/Persistence interoperability**.
 
@@ -10,7 +10,7 @@ sudo journalctl -u infrasible-agent -n 100 --no-pager
 sudo systemctl restart infrasible-agent
 ```
 
-The systemd unit runs `/usr/bin/infrasible-agent run --config=/etc/infrasible-agent/config.json` under dedicated `infrasible-agent` credentials and stores data in `/var/lib/infrasible-agent/agent.db`. All network channels are outbound. The daemon continues collecting locally when `monitoring_servers` is empty. Network registration and PKI rotation are **not automated** in v0.3.0.
+The systemd unit runs `/usr/bin/infrasible-agent run --config=/etc/infrasible-agent/config.json` under dedicated `infrasible-agent` credentials and stores data in `/var/lib/infrasible-agent/agent.db`. All network channels are outbound. The daemon continues collecting locally when `monitoring_servers` is empty. Network registration and PKI rotation are **not automated** in v0.3.1.
 
 ## Operator commands (authorized local or existing SSH session)
 

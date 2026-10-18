@@ -1,4 +1,4 @@
-# Agent configuration — v0.3.0
+# Agent configuration — v0.3.1
 
 The daemon reads `/etc/infrasible-agent/config.json`. The format has `config_version: 1` and is JSON. Unknown fields fail validation. The current implementation reads the config at process start: **automatic atomic reload and desired-vs-effective status are not implemented**. A validated change requires a controlled systemd restart.
 
@@ -68,7 +68,7 @@ A **single currently active relay** is the intended normal Live path, not multip
 8. **Verify [partially implemented]:** inspect service logs, `health status`, and `storage status` via existing SSH. These local commands do **not** attest that the Relay accepted Agent registration or that the Persistence API committed a record. A real end-to-end check requires Relay subscription/authorization evidence and a durable ACK emitted by the matching central API.
 9. **View data [external integration required]:** Desktop connects to the authorized Live Relay subscriber interface for current fresh frames; it calls the **Historical API** for persisted history. It may invoke local safe cleanup only via the existing SSH operator path after explicit confirmation, never over WSS/HTTPS ingestion.
 
-### Exact v0.3.0 Agent JSON example
+### Exact v0.3.1 Agent JSON example
 
 The domains ending in `.invalid` are **non-functional placeholders**. Replace them only with centrally registered URLs and certificate paths. The paths `/v2/agents/live` and `/v2/agents/aggregates` are example paths from the architecture, **not proven server routes**.
 
