@@ -140,12 +140,14 @@ CREATE INDEX IF NOT EXISTS idx_ack_final_expiry ON aggregates(period_start_ms) W
 // OpenExisting prevents a read-only operator command from implicitly creating a
 // new Agent identity and database when the configured path is wrong.
 func OpenExisting(path string) (*Store, error) {
- info, err := os.Lstat(path)
- if err != nil { return nil, err }
- if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-  return nil, errors.New("agent storage must be an existing regular non-symlink file")
- }
- return Open(path)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return nil, errors.New("agent storage must be an existing regular non-symlink file")
+	}
+	return Open(path)
 }
 
 func Open(path string) (*Store, error) {
