@@ -20,7 +20,7 @@ import (
  "github.com/gemvc/infrasible-agent/internal/config"
  "github.com/gemvc/infrasible-agent/internal/storage"
 )
-func usage()error{return errors.New("usage: infrasible-agent run|config validate|storage status|storage cleanup --dry-run|storage cleanup --safe [--config=PATH]")}
+func usage()error{return errors.New("usage: infrasible-agent run|config validate|health status|storage status|storage cleanup --dry-run|storage cleanup --safe [--config=PATH]")}
 func run(args []string)error{
  if runtime.GOOS!="linux"{return errors.New("Linux only")}
  configPath:="/etc/infrasible-agent/config.json"
@@ -41,6 +41,12 @@ func run(args []string)error{
   ctx,stop:=signal.NotifyContext(context.Background(),syscall.SIGTERM,syscall.SIGINT)
   defer stop()
   return agent.New(c,s,log).Run(ctx)
+ }
+ if len(args)==2&&args[0]=="health"&&args[1]=="status"{
+  s,e:=storage.Open(c.DataPath);if e!=nil{return e};defer s.Close()
+  ctx,cancel:=context.WithTimeout(context.Background(),10*time.Second);defer cancel()
+  h,e:=s.Health(ctx,time.Now());if e!=nil{return e}
+  return json.NewEncoder(os.Stdout).Encode(h)
  }
  if len(args)>=2&&args[0]=="storage"{
   s,e:=storage.Open(c.DataPath);if e!=nil{return e};defer s.Close()
