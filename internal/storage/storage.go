@@ -51,6 +51,7 @@ type Final struct {
 	ExpectedSlots     int64                `json:"expected_slots"`
 	ObservedSlots     int64                `json:"observed_slots"`
 	Summary           map[string]Statistic `json:"summary"`
+	Quality           QualityCounts         `json:"quality"`
 	PayloadSHA256     string               `json:"payload_sha256,omitempty"`
 }
 type Pending struct {
@@ -286,38 +287,68 @@ func flatten(summary map[string]Statistic, key string, v any, at int64) {
 		}
 	}
 }
-func fromRaw(rows *sql.Rows) (map[string]Statistic, int64, error) {
+// QualityCounts preserves actual observation outcomes at their original family
+// names. An omitted (not-due) family is not a failed scheduled observation.
+type QualityCounts map[string]map[string]int64
+
+func mergeQuality(dst, src QualityCounts) {
+	for family, statuses := range src {
+		if dst[family] == nil {
+			dst[family] = map[string]int64{}
+		}
+		for status, count := range statuses {
+			dst[family][status] += count
+		}
+	}
+}
+
+func fromRaw(rows *sql.Rows) (map[string]Statistic, QualityCounts, int64, error) {
 	result := map[string]Statistic{}
+	quality := QualityCounts{}
 	var frames int64
 	for rows.Next() {
 		var raw string
 		var at int64
 		if e := rows.Scan(&raw, &at); e != nil {
-			return nil, 0, e
+			return nil, nil, 0, e
 		}
 		frames++
 		var metrics map[string]collector.Observation
 		if e := json.Unmarshal([]byte(raw), &metrics); e != nil {
-			return nil, 0, e
+			return nil, nil, 0, e
 		}
 		for name, o := range metrics {
+			if quality[name] == nil {
+				quality[name] = map[string]int64{}
+			}
+			status := o.Status
+			if status == "" {
+				status = "missing"
+			}
+			quality[name][status]++
+			if status == "not_due" {
+				continue
+			}
 			st := result[name]
-			// Numeric observations are counted by record(); counting them
-			// here as well would double the scheduled due opportunity.
+			// Numeric observations are counted by record. Nested values
+			// contribute their own numeric leaf statistics, while the family
+			// outcome remains in quality_json rather than a phantom scalar.
 			_, scalar := o.Value.(float64)
-			if o.Status != "valid" || !scalar {
+			if status != "valid" || !scalar {
 				st.Due++
 			}
-			if o.Status != "valid" {
+			if status != "valid" {
 				st.Failed++
 			}
-			result[name] = st
-			if o.Status == "valid" {
+			if status != "valid" || !scalar {
+				result[name] = st
+			}
+			if status == "valid" {
 				flatten(result, name, o.Value, o.MeasuredAtMS)
 			}
 		}
 	}
-	return result, frames, rows.Err()
+	return result, quality, frames, rows.Err()
 }
 func (s *Store) Finalize(ctx context.Context, now time.Time) error {
 	cutoff := now.UTC().Add(-Grace).UnixMilli()
@@ -402,7 +433,7 @@ func (s *Store) minute(ctx context.Context, start, now int64) error {
 	if e != nil {
 		return e
 	}
-	summary, frames, e := fromRaw(rows)
+	summary, quality, frames, e := fromRaw(rows)
 	rows.Close()
 	if e != nil {
 		return e
@@ -415,7 +446,11 @@ func (s *Store) minute(ctx context.Context, start, now int64) error {
 		return e
 	}
 	lin := digest(payload)
-	_, e = tx.ExecContext(ctx, `INSERT INTO aggregates(resolution_seconds,period_start_ms,finalized_at_ms,sample_count,expected_slots,observed_slots,summary_json,quality_json,lineage_sha256) VALUES(60,?,?,?,60,?,?,?,?)`, start, now, frames, frames, string(payload), `{"policy":"1s/5s/30s"}`, lin)
+	qualityJSON, e := json.Marshal(quality)
+	if e != nil {
+		return e
+	}
+	_, e = tx.ExecContext(ctx, `INSERT INTO aggregates(resolution_seconds,period_start_ms,finalized_at_ms,sample_count,expected_slots,observed_slots,summary_json,quality_json,lineage_sha256) VALUES(60,?,?,?,60,?,?,?,?)`, start, now, frames, frames, string(payload), string(qualityJSON), lin)
 	if e != nil {
 		return e
 	}
@@ -443,23 +478,29 @@ func (s *Store) quarter(ctx context.Context, start, now int64) error {
 	if !errors.Is(e, sql.ErrNoRows) {
 		return e
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT summary_json,sample_count,observed_slots,lineage_sha256 FROM aggregates WHERE resolution_seconds=60 AND period_start_ms>=? AND period_start_ms<? ORDER BY period_start_ms`, start, start+900000)
+	rows, e := tx.QueryContext(ctx, `SELECT summary_json,quality_json,sample_count,observed_slots,lineage_sha256 FROM aggregates WHERE resolution_seconds=60 AND period_start_ms>=? AND period_start_ms<? ORDER BY period_start_ms`, start, start+900000)
 	if e != nil {
 		return e
 	}
 	var count, slots int64
 	sum := map[string]Statistic{}
+	quality := QualityCounts{}
 	lineage := strings.Builder{}
 	for rows.Next() {
-		var raw, hash string
+		var raw, rawQuality, hash string
 		var c, observed int64
-		if e = rows.Scan(&raw, &c, &observed, &hash); e != nil {
+		if e = rows.Scan(&raw, &rawQuality, &c, &observed, &hash); e != nil {
 			break
 		}
 		sub := map[string]Statistic{}
 		if e = json.Unmarshal([]byte(raw), &sub); e != nil {
 			break
 		}
+		var q QualityCounts
+		if e = json.Unmarshal([]byte(rawQuality), &q); e != nil {
+			break
+		}
+		mergeQuality(quality, q)
 		for k, v := range sub {
 			st := sum[k]
 			merge(&st, v)
@@ -483,8 +524,12 @@ func (s *Store) quarter(ctx context.Context, start, now int64) error {
 	if e != nil {
 		return e
 	}
+	qualityJSON, e := json.Marshal(quality)
+	if e != nil {
+		return e
+	}
 	identifier := digest([]byte(fmt.Sprintf("%s:%d:900", s.id, start)))
-	fin := Final{AgentID: s.id, SchemaVersion: 2, PeriodStartMS: start, ResolutionSeconds: 900, RecordID: identifier, SampleCount: count, ExpectedSlots: 900, ObservedSlots: slots, Summary: clone(sum)}
+	fin := Final{AgentID: s.id, SchemaVersion: 2, PeriodStartMS: start, ResolutionSeconds: 900, RecordID: identifier, SampleCount: count, ExpectedSlots: 900, ObservedSlots: slots, Summary: clone(sum), Quality: quality}
 	unhashed, e := json.Marshal(fin)
 	if e != nil {
 		return e
@@ -495,7 +540,7 @@ func (s *Store) quarter(ctx context.Context, start, now int64) error {
 	if e != nil {
 		return e
 	}
-	_, e = tx.ExecContext(ctx, `INSERT INTO aggregates(resolution_seconds,period_start_ms,finalized_at_ms,sample_count,expected_slots,observed_slots,summary_json,quality_json,lineage_sha256,record_id,payload_sha256,wire_payload) VALUES(900,?,?,?,900,?,?,?,?,?,?,?)`, start, now, count, slots, string(raw), `{"policy":"1s/5s/30s"}`, digest([]byte(lineage.String())), identifier, hash, wire)
+	_, e = tx.ExecContext(ctx, `INSERT INTO aggregates(resolution_seconds,period_start_ms,finalized_at_ms,sample_count,expected_slots,observed_slots,summary_json,quality_json,lineage_sha256,record_id,payload_sha256,wire_payload) VALUES(900,?,?,?,900,?,?,?,?,?,?,?)`, start, now, count, slots, string(raw), string(qualityJSON), digest([]byte(lineage.String())), identifier, hash, wire)
 	if e != nil {
 		return e
 	}
