@@ -1,6 +1,6 @@
 # Infrasible Monitoring Agent
 
-**Current development version: 0.2.0 (daemon v2).** This repository contains a standalone Linux monitoring daemon written in Go. The daemon runs under systemd as a non-root user, measures Linux host metrics, keeps local SQLite history, and has outbound-only WSS Live and HTTPS Persistence clients. This version is an **implementation candidate, not production-certified**. There is no inbound HTTP management port.
+**Current development version: 0.3.0 (daemon v2).** This repository contains a standalone Linux monitoring daemon written in Go. The daemon runs under systemd as a non-root user, measures Linux host metrics, keeps local SQLite history, and has outbound-only WSS Live and HTTPS Persistence clients. This version is an **implementation candidate, not production-certified**. There is no inbound HTTP management port.
 
 ## Source of truth
 
@@ -17,6 +17,10 @@ The implementation in source code takes precedence for *currently available comm
 - Three SQLite application tables (`server_info`, `raw_samples`, `aggregates`) in WAL/FULL mode with transactional minute and quarter-hour rollups and replayable pending 15-minute payloads.
 - Local CLI: `run`, `config validate`, `health status`, `storage status`, `storage cleanup --dry-run` and `storage cleanup --safe`.
 - Initial mTLS-protected outbound WebSocket and HTTP clients, packaging for Linux amd64, arm64, armv7 and armv6, and an automated Go test/cross-build pipeline.
+
+## Development milestone 0.3.0
+
+This milestone incorporates follow-up fixes to operator identity inspection, scalar metric due counting, malformed diskstats handling and filesystem statfs error reporting. It is a development milestone only; central interoperability, PKI lifecycle, complete metric quality and production acceptance remain unverified.
 
 ## Not yet production-ready
 
