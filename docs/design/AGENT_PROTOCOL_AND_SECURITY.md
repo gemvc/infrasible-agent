@@ -8,7 +8,7 @@
 |---|---|---|
 | Transport | outbound persistent `wss://` over TLS/mTLS | outbound `https://` requests with keep-alive and TLS/mTLS |
 | Destination | stateless **Live Bridge** (per-channel authorized) | **Persistence API** on authorized durable/deduplication domain |
-| Payload | fresh 1s quality-tagged samples | **only finalized immutable 900s** aggregates |
+| Payload | **1Hz fresh frame** with actual newly measured 1s/5s/30s observations plus explicit per-metric quality/freshness; no cached metric presented as new | **Only immutable 900s** with metric-specific cadence, coverage and actual measured peaks/quality |
 | Destination storage | no monitoring-history DB/read | durable PostgreSQL commit plus idempotent dedup |
 | Agent outgoing buffer | small, non-durable, drop oldest (engineering initial 2) | SQLite pending predicate, oldest-first; one active submission initially |
 | ACK | optional transport/live receipt; never durable-history proof | authenticated ACK matching agent/period/record/hash/domain and durable commit |
@@ -90,7 +90,7 @@ Protocol v2 distinguishes new daemon transport from legacy v1 stdout/SSH; semant
   "agent_version": "<semver>",
   "channel": "live",
   "schema_versions": ["2.0"],
-  "capabilities": ["live_1hz", "sample_quality"],
+  "capabilities": ["live_1hz", "sample_quality", "metric_cadence_v1", "metric_freshness_v1"],
   "sent_at_utc": "<timestamp>"
 }
 ```
@@ -113,7 +113,7 @@ Connection context must be authenticated and channel-authorized independently of
 
 ## 5. Live WSS envelope and flow
 
-Illustrative wire sample:
+Illustrative **single new 1Hz Live frame**, with a 5s Load and 30s Filesystem collector not due on this tick (JSON is a proposed v2 schema fixture, not a deployed API):
 
 ```json
 {
@@ -121,13 +121,43 @@ Illustrative wire sample:
   "protocol_major": 2,
   "schema_version": "2.0",
   "agent_id": "<stable-agent-id>",
-  "sample_id": "<unique-sample-id>",
+  "sample_id": "<stable-frame-id>",
   "collected_at_utc": "2026-10-18T12:00:01Z",
   "elapsed_ms": 1008,
-  "quality": {"clock": "trusted", "missing": []},
-  "metrics": {}
+  "sampling_profile_version": 1,
+  "quality": {
+    "clock": "trusted",
+    "not_due": ["load", "filesystem_capacity"],
+    "errors": []
+  },
+  "measurements": {
+    "cpu": {
+      "measured_at_utc": "2026-10-18T12:00:01Z",
+      "status": "valid", "unit": "percent", "value": 12.5
+    },
+    "memory": {
+      "measured_at_utc": "2026-10-18T12:00:01Z",
+      "status": "valid", "unit": "bytes", "value": "4294967296"
+    },
+    "disk_io": {
+      "measured_at_utc": "2026-10-18T12:00:01Z",
+      "status": "unsupported", "value": null
+    }
+  },
+  "last_known_for_display": {
+    "filesystem_capacity": {
+      "origin": "cache", "new_observation": false,
+      "measured_at_utc": "2026-10-18T12:00:00Z",
+      "age_ms": 1000, "freshness": "within_ttl",
+      "value": {"mount": "/", "available_bytes": "53687091200"}
+    }
+  }
 }
 ```
+
+**Contract restrictions:** `measurements` may contain **only newly attempted due** readings with original source times and typed statuses. An old display cache, if included at all, lives under distinct `last_known_for_display`, retains its original timestamp, reports age/TTL/freshness and `new_observation=false`; it is **never persisted as a new sample** or treated as a new aggregate event. `not_due` does not count as `missing`. Valid zero differs from null with `error`, `missing`, `counter_reset` or `unsupported`. `stale` is a derived state once age exceeds TTL, not a new measured value. For long-lived views, the UI recomputes age from original timestamp; a healthy WSS heartbeat never refreshes a metric's original observation time.
+
+**Per-metric cadence defaults:** CPU/Network/Memory/Swap/Disk I/O 1s; Load 5s; Filesystem capacity 30s; static host metadata startup/change. On 60-second full healthy operations, per-metric expected opportunities are 60/12/2, distinct from the global 60 frame slots. Emit recognized `sampling_profile_version` and timestamps; negotiating unsupported required cadence/quality schema fails explicitly, never loses the new fields silently.
 
 A single active WSS per Agent/channel, independent of Persistence. Queue initial bounded capacity **2 messages** and drop oldest only for **live transient** data on slow Bridge, counted in `live_dropped`; no synthetic backfill on reconnect. Newly reconnected subscriber receives fresh samples, not the historical backlog. Heartbeat initial 15s, disconnected timeout initially 45s; exact values subject to shared Bridge acceptance. Send events in queue order and expose gaps via sample ID/sequence. Live delivery status never sets SQLite `saved` or `persisted_at`.
 
@@ -146,12 +176,25 @@ A single active WSS per Agent/channel, independent of Persistence. Queue initial
   "period_seconds": 900,
   "final": true,
   "coverage": {"expected_slots": 900, "observed_slots": 820},
-  "metrics": {},
+  "sampling_profile_version": 1,
+  "metrics": {
+    "cpu": {"cadence_seconds": 1, "scheduled": 900, "valid": 810,
+            "coverage": {"numerator": 810, "denominator": 900},
+            "peak_kind": "actually_measured"},
+    "load": {"cadence_seconds": 5, "scheduled": 180, "valid": 160,
+             "coverage": {"numerator": 160, "denominator": 180}},
+    "filesystem_capacity": {"cadence_seconds": 30, "scheduled": 30,
+                            "valid": 28,
+                            "coverage": {"numerator": 28, "denominator": 30}}
+  },
+  "quality": {"metric_quality_version": 1, "partial": true},
   "payload_sha256": "<SHA256 of approved canonical payload bytes>"
 }
 ```
 
 **Canonical hash definition (engineering-selected, external approval pending):** build the immutable submission object with all required identity, period, schema, quality and metrics fields **but omit only the `payload_sha256` member**; serialize it to canonical UTF-8 JSON following **RFC 8785 (JCS)**, then compute SHA-256 of those canonical bytes. Reject NaN/Infinity and invalid/non-representable numbers. Add `payload_sha256` to the envelope and store the **exact transmitted JSON bytes** in SQLite `wire_payload` for byte-identical retries. The transmitted `wire_payload` **is not itself hashed** because it contains its own digest. API mocks and central producer/consumer must use the same normative fixture and canonicalization; different hash for same logical `record_id` is a permanent conflict. Store/keep old v2 wire payload while pending across upgrades; do not regenerate it under a new schema.
+
+**Canonical coverage semantics:** `coverage.expected_slots` / `observed_slots` describe the 1Hz **frames**; all metric-specific denominators and measured timestamps, freshness-valid duration, missing/error/reset/status and entity-level quality must be encoded in `metrics` / `quality` and included in canonical hash. The illustrative metrics' valid-counts are independent; do not assume every valid metric coincides with a valid frame or that a 30s collector saw a sub-30s spike. Cached Live display values are **never** uploaded as newly measured historical values. The central API and Historical UI must preserve and correctly interpret this data-quality distinction.
 
 **Numeric precision for JSON/JCS:** represent large unsigned Linux counters (e.g., rx/tx bytes and packet totals) as exact unsigned **decimal strings** in wire metrics to avoid IEEE-754 precision loss beyond 2^53−1. Validate the decimal grammar/range and define signedness/units in schema; bounded floats may represent percentages and load. Preserve this in canonical hash fixtures, including values exceeding 9,007,199,254,740,991. This applies to the external Bridge/API contracts as well.
 
@@ -223,7 +266,7 @@ No telemetry side channel or automatic reporting to an unrelated vendor is autho
 
 ## 9. Mock contract fixtures and release dependency
 
-Required mock assertions: incompatible major rejection; bad CA/SNI/expired/revoked cert; valid mTLS but unauthorized Agent/channel; N=1/3/10 ordered selection; Live slow/drop/reconnect with no history persistence; persistence rejects raw/60s; 200 without ACK; forged/wrong hash/wrong domain ACK; PostgreSQL mock commit succeeded/ACK lost/identical replay; two shared versus independent central domains; 61-day late arrival/reaggregation; config revoke during ACK and rotation while live.
+Required mock assertions: 1Hz Live frame with correct 1s/5s/30s actual measurement timestamps, not_due Load/Filesystem on off-ticks and safe cached old display; metric-specific coverage 40/60 CPU versus 8/12 Load and normal 2/2 filesystem, old/stale does not count as new, JCS hash unchanged across idempotent retry; incompatible major rejection; bad CA/SNI/expired/revoked cert; valid mTLS but unauthorized Agent/channel; N=1/3/10 ordered selection; Live slow/drop/reconnect with no history persistence; persistence rejects raw/60s; 200 without ACK; forged/wrong hash/wrong domain ACK; PostgreSQL mock commit succeeded/ACK lost/identical replay; two shared versus independent central domains; 61-day late arrival/reaggregation; config revoke during ACK and rotation while live.
 
 **Unresolved external sign-offs (not product option votes):** Bridge ingress/outbound subscriber schema, Persistence ACK exact format and durable implementation, domain proof, central >30d late ingestion and dedup retention, PKI issuer/rotation/revocation/re-enrollment, Desktop v1 migration. Any promise absent from other service implementations remains BLOCKED and must not be declared complete by Agent-only tests.
 

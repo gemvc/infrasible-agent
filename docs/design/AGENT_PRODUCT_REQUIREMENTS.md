@@ -1,12 +1,12 @@
 # Infrasible Monitoring Agent — Product Requirements
 
-**Status:** PRODUCT / ARCHITECTURE BASELINE APPROVED IN DESIGN DISCUSSION (2026-10-18); evidence-based G00 gate and external interface sign-offs remain pending.
+**Status:** FINAL OWNER-APPROVED PRODUCT DESIGN (2026-10-18), including independent metric cadences and first-class quality/freshness. G00 evidence and external-interface sign-offs remain pending; no runtime implementation is claimed.
 **Scope:** standalone, open-source Linux Agent in `gemvc/infrasible-agent`. **Source baseline:** `main@8b43c8a20d3a00fb030634c46d4677eaf52661ed` (current source is legacy v0.1.0).
 **Change authority:** owner explicitly approved DEC-01–11 and the reviewed engineering resolutions on 2026-10-18, then authorized repository/backlog documentation updates. This does **not** authorize runtime implementation, changes to Transible Desktop/SSH, other services, production deployments, releases, or a license change without legal clearance.
 
 ## 1. Outcome, users and operational journeys
 
-A small Linux daemon collects host CPU, memory/swap, load, filesystem and network metrics at nominal 1 Hz; durably stages raw observations, produces UTC-aligned one-minute and finalized fifteen-minute summaries, emits fresh live samples to a stateless bridge, and uploads only final fifteen-minute records to a distinct durable Persistence API. The Agent can be installed by Transible through existing SSH or provisioned independently; it never polls SSH per second.
+A small standalone Linux daemon runs a nominal **1 Hz frame/scheduler** with **independent per-metric collection cadences**, durably stages real observations with their measurement time/quality/freshness, makes UTC-aligned 1m and 15m summaries with per-metric coverage, sends fresh Live frames to a stateless Bridge, and uploads only immutable final 15m to a distinct Persistence API. The Agent can be installed by Transible through existing SSH or provisioned independently; it never polls SSH per second.
 
 - **Operators:** register a host, see near-real-time Live UI while the Bridge is reachable, distinguish stale/degraded from healthy, diagnose gaps and Pending history, recover a crashed agent or revoked certificate safely.
 - **Transible Desktop:** use its existing SSH implementation only for initial install/registration and explicit administrative actions; Live UI subscribes to Bridge; Historical UI queries central Historical API.
@@ -15,7 +15,7 @@ A small Linux daemon collects host CPU, memory/swap, load, filesystem and networ
 
 ## 2. Scope and exclusions
 
-**In:** Linux collectors, 1Hz scheduler, bounded quality-aware sampling, single local SQLite, 1m and 15m rollups, 60-day acknowledged final retention, indefinite pending retention while capacity permits, outbound Agent-initiated Live WSS and Persistence HTTPS with mTLS, one ordered versioned N-endpoint config, domain-safe per-channel failover, registration/rotation interface, systemd unattended service, health, secure signed packages, migration documentation, tests and mock contracts.
+**In:** Linux collectors, 1Hz frames with per-metric scheduling and bounded collection, explicit measured-at/quality/freshness, one local SQLite, metric-quality-preserving 1m and 15m rollups, 60-day acknowledged final retention, indefinite pending retention while capacity permits, outbound Agent-initiated Live WSS and Persistence HTTPS with mTLS, one ordered versioned N-endpoint config, domain-safe per-channel failover, registration/rotation interface, systemd unattended service, health, secure signed packages, migration documentation, tests and mock contracts.
 
 **Out:** Desktop UI/SSH core/vault alterations, shipping Live Bridge or PostgreSQL/Persistence/Historical API here, under-live tracking, direct database writes, inbound public metrics server, Redis/JSONL/queue database/fourth application table, guaranteed lossless live event delivery, historical replay via Bridge, automatic destructive recovery, unconditional Apache-2.0 relicensing, automatic production deployment.
 
@@ -42,11 +42,11 @@ Approved engineering defaults below may be tuned only with a recorded evidence-b
 | Requirement | Guarantee |
 |---|---|
 | FR-01 | Exactly three logical application tables `server_info`, `raw_samples`, `aggregates` in a single local SQLite database; no queue table. SQLite internal tables are not additional application tables. |
-| FR-02 | Capture each actual sample approximately every second with measured elapsed time, stable sample ID, UTC observation time and explicit quality; no fabricated values on failed reads, missed ticks, host reconfiguration or clock anomaly. |
+| FR-02 | Commit one actual one-second **frame** with stable ID, UTC frame time and real elapsed interval. Different metric families run on their approved schedule; each actual metric measurement has independent `measured_at_utc`, unit, status and quality. Do not manufacture a fresh observation when a collector is not due or fails. |
 | FR-03 | One-minute rollups cover `[minute_start, minute_end)`; finalize no sooner than end plus 120s grace; immutable thereafter. |
 | FR-04 | `raw_samples.saved=true` only **in the same committed transaction** as its exact minute aggregate; no unsaved raw cleanup. |
 | FR-05 | Fifteen finalized minute periods yield one immutable fifteen-minute record by an idempotent transaction; represent missing coverage, no synthetic samples, no source cleanup before destination commit. |
-| FR-06 | Preserve valid per-metric count, elapsed-time-weighted average when appropriate, min/max/last, peak magnitude/time, anomaly and observed-versus-expected coverage (entity-specific where necessary). |
+| FR-06 | Preserve **per-metric scheduled opportunities, attempts, valid/invalid/missed observations, last measured time, age/freshness, count, coverage**, and meaningful weighted average, measured min/max/last, peak value/time and anomaly evidence in 1m and 15m rollups; frame-level 60/900 slots do not substitute for per-metric expected opportunities. |
 | FR-07 | Live publishes fresh raw data only to an authenticated, authorized stateless Bridge. It does not block sampler/SQLite/Persistence; bounded live buffering permits counted drops. |
 | FR-08 | Persistence sends **only finalized 900s records** oldest-pending-first; `persisted_at` changes only after a verified authenticated ACK bound to matching ID/hash/agent/domain after central durable commit. |
 | FR-09 | Same ID + identical immutable payload on retries, including ACK-lost/commit-succeeded; the central domain must deduplicate and reject same-ID/different-payload. |
@@ -56,6 +56,54 @@ Approved engineering defaults below may be tuned only with a recorded evidence-b
 | FR-13 | ACKed final rows locally retained for 60 days and then cleanup-eligible; older unACKed final records are retained until ACK (subject to explicit observable storage failure). |
 | FR-14 | New public service interface is daemon-only and protocol-major 2 design; legacy v0.1.0 stays an archived supported-to-migrate artifact, never invisibly overwritten for v1 CLI consumers. |
 | FR-15 | No external API's advertised availability/ACK/history behavior is inferred from Agent mock implementation; external owners must accept it. |
+| FR-16 | Explicitly distinguish actual `valid` (including true zero), due-but-`missing`, read `error`, `counter_reset`, age-`stale`, `not_due` and `unsupported`. `null`/unknown never equals measured zero, and `stale` never counts as a new observation. |
+| FR-17 | A Live view may hold an old value only with original `measured_at_utc`, age/TTL and old-value status; cached values cannot inflate local raw or aggregate sample counts. After startup absent metrics are unknown until measured. |
+| FR-18 | Keep small modular Go collectors inside **one daemon binary**; no general plugin runtime, AI engine, in-Agent dashboard, public inbound REST port, scripts or server-configuration automation. Ship meaningful per-channel and per-metric health in the first vertical slice. |
+
+## 4A. Final owner-approved engineering refinements — 2026-10-18
+
+These refinements supplement **rather than supersede** DEC-01–11. The DEC-03 **UTC minute grace remains 120 seconds**; an earlier hypothetical shorter grace was not approved. Sampling intervals are **default normative policies**, only adjustable via a versioned/validated sampling profile and matching coverage/performance tests.
+
+### AD-01 — A 1-second raw frame with independent metric cadences
+
+| Metric | Default cadence | Exact meaning |
+|---|---:|---|
+| CPU utilization/CPU counters | 1 second | Actual `/proc/stat` interval; avoid duplicate guest accounting |
+| Network interface counters, bytes/packets/errors/drops and derived rates | 1 second | Counter delta / observed monotonic elapsed; invalid resets reported |
+| Memory and swap | 1 second | Genuine point-in-time bytes; zero only if source read succeeds |
+| Disk I/O counters/rates | 1 second | Linux block I/O metrics where available, with explicit device identity/quality; **distinct** from filesystem free capacity |
+| Load averages, runnable/total tasks | 5 seconds | Already rolling-average metrics; retain original measurement timestamp |
+| Filesystem space/capacity per mount | 30 seconds | Mount-level `statfs` with source time, mount churn/errors |
+| Mostly static OS/kernel/hardware/host metadata | startup and detected change | Event-driven or bounded low-frequency reconciliation when needed; never scan all metadata every 1s |
+
+One actual Raw frame each nominal second remains the **only raw staging row**: it carries actual newly collected readings and due collector errors, not fabricated repeats of slower measurements. `not_due` may be represented by omission plus the approved sampling profile. A small bounded in-memory last-valid cache may support Live presentation, but each reused value remains clearly **old**, is never re-stamped as measured now, and never creates a new raw observation. All schedules use a common monotonic tick source and bounded collector work with no per-metric goroutine explosion.
+
+New metric types must declare units, source, cadence, stable entity identifiers, quality/freshness, per-metric aggregation math, resource budget and mock/native tests. Unsupported Disk I/O on a platform is `unsupported`, never a measured zero.
+
+### AD-02 — First-class quality, freshness and metric-specific coverage
+
+- `valid`: actual accepted measurement at `measured_at_utc`, including legitimate zero.
+- `not_due`: no collection scheduled on this frame; **not** a failed or missing observation.
+- `missing`: scheduled reading or frame was absent; counts against expected opportunities.
+- `error`: due read/parse/permission failed; typed redacted diagnostic, no valid value.
+- `counter_reset`: newly observed counter could not yield a valid rate for this interval; may reset baseline.
+- `stale`: previously valid cached value is older than its **metric-specific freshness TTL**; carries old timestamp and is never a new observation.
+- `unsupported`: kernel/source does not expose the metric; not confused with transient failure.
+
+Default freshness TTL is **2 × configured cadence + allowed scheduler jitter margin**, explicitly bounded and versioned per metric. The cache may expose `last_valid_at_utc`/age to Live but does not replace invalid/absent readings. A cached sample can be *not newly measured* even when still within TTL: `freshness` and `observation_status` must be independent.
+
+On a full uninterrupted UTC minute, expected nominal opportunities are 60 CPU/Network/Memory/Disk-I/O observations, **12** Load observations and **2** Filesystem-capacity observations. A quarter has 900, 180 and 30 respectively. Startup, downtime, phase alignment and clock anomaly may change the actual due/attempted values; retain explicit profile and due/gap counts rather than falsely assigning a full observation to an offline host. The global `expected_slots` and `observed_slots` in `aggregates` describe **1Hz frame availability only**, not every metric's coverage. Per-metric actual expected/due/valid/error and per-entity coverage belong in `summary_json`/`quality_json`.
+
+Example in one minute: CPU **40/60** valid and Load **8/12** valid are distinct coverages; on healthy 5s Load, four intervening 1s frames without Load are `not_due`, not missing. A 30s Filesystem check can only report **measured** min/max/peak; no claim to detect changes between checks. A duration-weighted gauge average must be calculated only over explicit, bounded **freshness-valid intervals**, documented as last-observation-held estimate if applied (not new observations); never carry old values across stale/untrusted gaps. For counters, use legitimate monotonic delta/time intervals and never average absolute byte totals as though rates.
+
+### AD-03 — Simplicity, early health and vertical-slice delivery
+
+One non-root **Go daemon**, modular built-in collectors, one controlled SQLite writer, two independent bounded Live/Persistence workers. Explicitly **exclude** general plugins, Redis, brokers, separate agent-side DBs, public REST listener, embedded dashboards, AI, arbitrary scripts and automated mutation of monitored servers.
+
+Start the first reviewable vertical slice with actual **CPU + Memory + Network** -> 1s raw frames -> SQLite -> 1m -> 15m -> restart recovery and per-metric quality/health. Then add durable Persistence mock with lost-ACK proof, Live WSS with bounded drops, remaining cadences/metrics, issuer/mTLS, N-endpoint HA, packaging and native qualification in existing P01–P11 dependency gates. This is incremental execution of the **existing single backlog**, not a new roadmap or permission to bypass P00/security prerequisites.
+
+A running process may still be STORAGE_DEGRADED, Live may be current while Persistence is 61 days behind, and a 1s frame may contain 30s-old capacity data. Report collector lag, last valid per metric, last due/failed opportunity, metric age, DB commit health, pending backlog, Live and Persistence health **separately**. Favor truthful degradation over fake success.
+
 
 ## 5. Lifecycle, trust and visible status
 
@@ -65,7 +113,7 @@ Agent service target: non-root account supervised by systemd on supported distri
 
 ## 6. SLO and measurement contract
 
-- **Nominal schedule:** one collection initiation per 1000ms on monotonic time; no catch-up synthetic snapshots. Jitter is actual start minus planned monotonic tick. P99 <= 500ms in approved reference steady workload; record actual interval for rate calculations.
+- **Nominal schedule:** one frame initiation per 1000ms monotonic, independently due 1s/5s/30s metric families and startup/change metadata; no catch-up synthetic measurements. Jitter is actual start minus planned monotonic tick. P99 <= 500ms in approved reference steady workload; record actual interval for rate calculations.
 - **CPU:** mean process CPU time / elapsed wall time <= 0.05 CPU-seconds/second (5% of ONE core), not 5% total host CPU; include normal collection/rollup and healthy dual-channel transport.
 - **RAM:** peak resident set size (RSS) <= 128 MB for qualified normal/reference cardinality workload, not merely Go heap. Measure startup, one-hour steady state, reconnect, WAL checkpoint and catch-up separately; abnormal high-cardinality load must be bounded and explicitly described.
 - **Disk:** no arbitrary universal quota. Benchmark measured serialized entity cardinality, `raw_samples` staging, one-minute staging, 5,760 acknowledged 15m final records/60d, SQLite indexes and WAL checkpoint, extra unACKed backlog over 60d. At 16KiB/final, payload-only ~90MiB; this is **illustrative**, not a budget.

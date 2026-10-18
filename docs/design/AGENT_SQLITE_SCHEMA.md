@@ -4,6 +4,8 @@
 
 ## 1. Constraints
 
+**Final owner-approved sampling refinement:** one actual 1 Hz raw **frame**, with independent due measurement cadences: CPU/Network/Memory/Swap/Disk I/O 1s; Load 5s; Filesystem capacity 30s; host metadata at startup/change. Original measurement times, quality, age and **per-metric** due/valid/failed counts survive one-minute and fifteen-minute rollups. This changes no logical table count.
+
 One local SQLite database, exactly three logical **application** tables `server_info`, `raw_samples`, `aggregates`. No JSONL, Redis, broker, queue table or separate intermediate database. Internal SQLite structures such as `sqlite_sequence` do not constitute an Agent application table. One controlled writer, concurrent bounded readers, local filesystem, `WAL`, `synchronous=FULL`, explicit transactions and `PRAGMA user_version`. Pure Go driver selected after native target qualification; first benchmark candidate `modernc.org/sqlite`, alternative `ncruces/go-sqlite3` subject to measured CPU/RSS compatibility. No implied driver has passed tests yet.
 
 ## 2. Three-table DDL (schema version candidate 2)
@@ -48,6 +50,7 @@ CREATE TABLE aggregates (
         CHECK (period_start_ms >= 0),
     finalized_at_ms INTEGER NOT NULL,
     sample_count INTEGER NOT NULL CHECK (sample_count >= 0),
+    -- Frame-level 1Hz slots ONLY: metric-specific denominators live in JSON.
     expected_slots INTEGER NOT NULL CHECK (expected_slots IN (60, 900)),
     observed_slots INTEGER NOT NULL CHECK (observed_slots >= 0),
     summary_json TEXT NOT NULL CHECK (json_valid(summary_json)),
@@ -89,6 +92,9 @@ CREATE INDEX idx_ack_final_expiry
 - `wire_payload` holds the exact immutable serialized final submission bytes **including** the `payload_sha256` field for byte-identical retries. To avoid a self-referential hash, `payload_sha256` is SHA-256 over the RFC 8785 (JCS) canonical UTF-8 JSON bytes of the immutable submission object **with the `payload_sha256` member omitted**. Reject non-canonical/NaN/Infinity inputs; the server independently recomputes the same digest. The transmitted `wire_payload` is not itself the hashed byte string. This duplicates summary data (storage cost must be measured) and avoids nondeterministic re-serialization on retries.
 - `record_id` derives deterministically from `agent_id`, UTC period start and period length **without cert-rotation epoch or software version**. Same final logical record remains same ID after cert renewal; a different payload for same ID is an error, not a silent replacement.
 - UTC fields as signed integer epoch milliseconds; use `[start_ms, end_ms)`. Unknown/missing values are JSON null/quality statuses, **not valid zero**.
+- A raw row is one **1-second frame**, not one newly measured value for every metric. Its frame time differs from each actual due metric measurement time stored in JSON. Slow Load/Capacity readings are never duplicated on intervening frames.
+- Aggregate sample_count/expected_slots/observed_slots refer only to **frame-level 1 Hz cadence**. Metric-specific expected/due/attempted/valid/failed/coverage/age and measured extrema/timestamps are stored under summary_json/quality_json, not falsely calculated as 60 or 900 opportunities for a 5s/30s collector. A JSON sampling-policy version and schedule phase must permit historical interpretation.
+- Cached last-known values and their staleness are for Live/health display only and are **not additional raw samples**; a stale value never increases a 1m or 15m observed count.
 
 A trigger to prohibit mutation of finalized records is optional defense-in-depth, not a fourth table. Immutable-final enforcement is mandatory at the application writer and SQLite tests. Because `persisted_at_ms` is the one allowed update to final rows, trigger rules (if used) must explicitly permit NULL -> authenticated timestamp only and reject changed final hash/payload.
 
@@ -100,16 +106,37 @@ Watermarks must only advance after corresponding immutable row transactions and 
 
 ## 4. Sampling and quality contract
 
-- Scheduler runs one monotonic 1000ms tick; serialize measurement, set actual `elapsed_ms`; if one tick overruns, explicitly skip ticks rather than spawn unbounded collectors or create fake samples.
-- One stable random 128-bit or collision-resistant event ID per accepted observation, independent from UTC; one insert per actual observation, including partial errors if DB accepts it.
-- Collect CPU, memory/swap, load, filesystem and interface values. Each metric has field-level validity; absent/failed values are unavailable, not numerical zero.
+- Scheduler runs one monotonic 1000ms **frame tick** and selects only due 1s/5s/30s metric families for bounded execution; actual elapsed time is recorded. Overrun skips ticks and reports gaps rather than spawning collectors or fabricating samples.
+- One stable random/collision-resistant **frame** ID per actual accepted tick, independent of UTC; one raw row per frame with only genuine due readings and due failures. Every actual measurement carries original timestamp, source, unit, status and stable entity identity.
+- Collect CPU, memory/swap, network and Disk I/O at 1s; Load at 5s; Filesystem capacity at 30s; metadata at startup/detected change. Typed quality distinguishes valid zero, missing scheduled due, error, counter_reset, unsupported, not_due and stale **derived old value** (not a new measurement).
 - CPU percentages: deltas excluding already included `guest`/`guest_nice` from total tick accounting; reset, hotplug, negative/zero denominator produce quality flags.
-- Memory/free, swap and load: point-in-time gauges; time-weighted average over **valid elapsed coverage**, max/min/last meaningful; explicit unit bytes or normalized load.
-- Filesystems: stable mount/device identifier and canonical mount-path decode; free/total bytes per valid mount, mount-removed flag; absent entity not treated as 0 free bytes.
+- Memory/free, swap and Load are point-in-time gauges with original measurement timestamps. Weighted estimates may cover only explicit freshness-valid bounded intervals (clearly labeled held-value estimate), not stale or unobserved gaps. Measured min/max/last and valid-duration denominators remain explicit.
+- Filesystem capacity is read at 30s per mount with original time/stable mount identity, removed/error/unsupported status; absent entity not treated as zero free bytes, and no 1s unseen capacity spike claimed.
 - Wire/JSON numeric exactness: represent large `uint64` counters as decimal strings in JSON payloads (especially beyond IEEE-754 safe integer 2^53−1); validate range and unit. SQL timestamps/counts remain bounded signed integers. Canonical JSON hashing must be stable for large counters.
-- Network: absolute rx/tx byte/packet/drop counters plus valid delta/rate on monotonic intervals; reset/wrap/hotplug has explicit invalid-rate epoch, counter deltas accumulate before deriving average rates. Rates must **not** be computed as naïve mean of unweighted instantaneous percentages.
+- Network and Disk I/O use actual monotonic counter deltas/rates (default 1s) with reset/wrap/hotplug invalid-rate epochs; accumulate delta and valid elapsed time, not absolute-counter averages or unweighted instant rate means.
 - Spike/peak: retain max value and UTC first occurrence (tie-breaking deterministic) plus anomaly category/count; preserve per-entity data and high-cardinality caps.
 - Clock anomalies: compare wall UTC vs monotonic elapsed; initial engineering anomaly threshold 2s; quarantine/mark ambiguous attribution and suspend unsafe finalization until trusted, no retroactive mutation of frozen periods.
+
+### 4.1. JSON payload contract for independent metric schedules
+
+**Raw frame JSON:** the scalar SQL columns identify a real frame. Its metrics_json contains a sampling_profile_version and only *new* observations for metric families actually due in this frame, with each entry holding measured_at_ms, source/unit, stable entity key (where applicable), value and typed observation_status. Its quality_json holds the due-families set, due errors, the scheduler phase/version, clock quality and gaps. A family not due at a given frame may be absent or explicitly listed as not_due, **never present with a repeated value and a new measurement timestamp**. A last-known cache used by Live remains bounded memory, not raw_samples history. For example a 12:00:01 frame may contain fresh CPU, Memory, Network and Disk-I/O but *no* new 5-second Load or 30-second Filesystem value.
+
+**Aggregate JSON:** summary_json stores per metric/entity a *separate* record with sampling_profile_version, cadence_seconds, nominal_expected_opportunities, known_due_opportunities, attempts, valid_observations, invalid_or_failed_observations, explicit unobserved gaps, numerator/denominator coverage, last_measured_at_ms, measured min/max/last/peak_at_ms, and any sufficient weighted numerator plus valid_duration_ms. quality_json carries reset/error/unsupported reasons, stale-at-window-end/freshness indicators and clock quality. For a complete, uninterrupted 60-second window the denominators are CPU 60, Load 12, Filesystem capacity 2; a healthy 15-minute quarter gives CPU 900, Load 180 and capacity 30. If the process was offline, scheduling profile changed or UTC was untrusted, explicitly distinguish nominal opportunity, known due, and unobserved interval rather than inventing a collected sample.
+
+**Status model:** valid, missing, error, counter_reset, unsupported and not_due are collection/due events; stale is derived from an earlier actual measurement's age when viewed, **not another collection event**. Store original measured_at_ms and a metric-specific freshness_ttl_ms, default 2 × cadence + approved jitter allowance. A previously valid cached value still within TTL is *not a fresh observation on a later frame*. JSON null and a typed missing/error are distinct from numeric zero.
+
+**Per-metric computation examples (same minute):**
+
+| Family | Scheduled opportunities | Actually valid | Coverage | Correct behavior |
+|---|---:|---:|---|---|
+| CPU 1s | 60 | 40 | 40/60 | Retain one observed 1s spike in measured max and peak time; missing 20 not zero |
+| Load 5s | 12 | 8 | 8/12 | Do not label the 48 not_due frames as misses or duplicate old Load |
+| Filesystem capacity 30s | 2 | 2 | 2/2 | Two actual measurements only; no claim to know any 1s capacity spike |
+| Network counter 1s | 60 | 59 | 59/60 | One reset epoch invalidates rate, not a zero/negative traffic measurement |
+
+These are **individual synthetic fixtures**, not a claim that each metric's failure falls on a different frame. The tests must pin consistent frame IDs, actual timestamps, profile phase, counter resets and duration arithmetic. Profile changes must be applied prospectively with a versioned phase marker; final immutable records cannot be recalculated with a later profile.
+
+**1m/15m fidelity:** minute transaction includes only actually committed source-frame IDs and atomically marks those raw rows saved. The 15m transaction combines 15 finalized minute sufficient statistics, with per-metric opportunity counts and bounded gauge valid durations, preserving original measured peaks and gaps. Never multiply 5s or 30s observations by the 1Hz frame count. Central final payload includes the same per-metric quality/coverage so History can distinguish fresh, stale and partial information from truly idle values.
 
 ## 5. Minute finalization (atomic)
 
@@ -122,8 +149,9 @@ assert all admitted writes for this period committed/known
 BEGIN IMMEDIATE
   SELECT raw rows WHERE effective_at_ms >= start AND < end
   ORDER BY effective_at_ms, sample_id
-  compute per-metric/instance valid-count, elapsed weights, extrema, peaks,
-    last, anomaly, coverage, and deterministic lineage
+  compute per-metric/instance scheduled/attempted/valid/error/missing counts,
+    original measured times, valid-duration weights, observed extrema/peaks,
+    freshness/quality, profile/phase and deterministic lineage
   INSERT immutable aggregates(resolution=60, period_start_ms=start,...)
     ON CONFLICT only if identical finalized lineage/summary; else fail/alert
   UPDATE raw_samples SET saved=1 WHERE sample_id IN (EXACT source IDs)
@@ -154,7 +182,7 @@ COMMIT
 DELETE 60s source aggregates for that quarter in bounded batches
 ```
 
-For weighted averages do not naïvely average 15 per-minute averages: use `sum(metric_valid_value * elapsed_valid_seconds)/sum(elapsed_valid_seconds)` or retain sufficient statistics in `summary_json`. Preserve peak and per-entity coverage. Incomplete/partial windows explicitly describe missing, never imply full quality.
+Do not average minute averages naïvely. Merge each metric's valid-duration-weighted numerator/denominator (or adequate sufficient statistics) and independent due/attempted/valid counts, including Load 180 planned observations per uninterrupted quarter and Capacity 30, not 900. Cached/stale values never inflate counts. Only actual measured peaks are retained, with per-entity coverage and gaps.
 
 ## 7. Persistence and retention SQL
 
@@ -207,7 +235,7 @@ Index effectiveness tested with `EXPLAIN QUERY PLAN` for (a) unsaved minute wind
 
 - Schema inspection finds exactly three Agent application tables, valid constraints, prepared SQL, time-aligned primary keys and `PRAGMA user_version`; no fourth queue table.
 - Failpoints before/mid/after raw, 60s and 900s transactions preserve atomic invariants and idempotent restart.
-- One-minute 40/60 valid-sample fixture with short spike retains true 40/60 and exact peak in 900s rollup.
+- One-minute CPU 40/60 with actual one-second spike, Load 8/12, Filesystem healthy 2/2, and a deliberately old cached value preserve distinct coverage and no stale inflation through 900s; no unobserved 30s capacity spike is claimed.
 - Midnight/DST/NTP forward/backward/restart and 120s grace have deterministic, non-synthetic behavior; missed offline-host windows not fabricated.
 - 61-day unACKed fixtures survive cleanup; ACKed expiry obeys UTC period end; ENOSPC exposes failure without deleting pending.
 - Invalid hash/domain/ACK and wrong-resolution data do not update `persisted_at_ms`.
