@@ -83,3 +83,43 @@ func TestUnsavedProtected(t *testing.T) {
 		t.Fatalf("%+v %v", st, e)
 	}
 }
+
+func TestRawAggregationCountsScalarDueOnce(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(filepath.Join(t.TempDir(), "scalar.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	start := time.Date(2026, 10, 18, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 2; i++ {
+		at := start.Add(time.Duration(i) * time.Second)
+		frame := collector.Frame{
+			ObservedAtMS: at.UnixMilli(),
+			Metrics: map[string]collector.Observation{
+				"scalar": {Status: "valid", MeasuredAtMS: at.UnixMilli(), Value: float64(i + 1)},
+				"nested": {Status: "valid", MeasuredAtMS: at.UnixMilli(), Value: map[string]float64{"value": float64(i + 1)}},
+			},
+		}
+		if err := db.Save(ctx, frame); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Finalize(ctx, start.Add(4*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	var raw string
+	if err := db.db.QueryRowContext(ctx, "SELECT summary_json FROM aggregates WHERE resolution_seconds=60 AND period_start_ms=?", start.UnixMilli()).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var metrics map[string]Statistic
+	if err := json.Unmarshal([]byte(raw), &metrics); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"scalar", "nested.value"} {
+		got := metrics[key]
+		if got.Due != 2 || got.Count != 2 || got.Sum != 3 {
+			t.Fatalf("%s: got %+v; want due=2 count=2 sum=3", key, got)
+		}
+	}
+}
