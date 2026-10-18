@@ -68,33 +68,33 @@ These refinements supplement **rather than supersede** DEC-01–11. The DEC-03 *
 
 | Metric | Default cadence | Exact meaning |
 |---|---:|---|
-| CPU utilization/CPU counters | 1 second | Actual \`/proc/stat\` interval; avoid duplicate guest accounting |
+| CPU utilization/CPU counters | 1 second | Actual `/proc/stat` interval; avoid duplicate guest accounting |
 | Network interface counters, bytes/packets/errors/drops and derived rates | 1 second | Counter delta / observed monotonic elapsed; invalid resets reported |
 | Memory and swap | 1 second | Genuine point-in-time bytes; zero only if source read succeeds |
 | Disk I/O counters/rates | 1 second | Linux block I/O metrics where available, with explicit device identity/quality; **distinct** from filesystem free capacity |
 | Load averages, runnable/total tasks | 5 seconds | Already rolling-average metrics; retain original measurement timestamp |
-| Filesystem space/capacity per mount | 30 seconds | Mount-level \`statfs\` with source time, mount churn/errors |
+| Filesystem space/capacity per mount | 30 seconds | Mount-level `statfs` with source time, mount churn/errors |
 | Mostly static OS/kernel/hardware/host metadata | startup and detected change | Event-driven or bounded low-frequency reconciliation when needed; never scan all metadata every 1s |
 
-One actual Raw frame each nominal second remains the **only raw staging row**: it carries actual newly collected readings and due collector errors, not fabricated repeats of slower measurements. \`not_due\` may be represented by omission plus the approved sampling profile. A small bounded in-memory last-valid cache may support Live presentation, but each reused value remains clearly **old**, is never re-stamped as measured now, and never creates a new raw observation. All schedules use a common monotonic tick source and bounded collector work with no per-metric goroutine explosion.
+One actual Raw frame each nominal second remains the **only raw staging row**: it carries actual newly collected readings and due collector errors, not fabricated repeats of slower measurements. `not_due` may be represented by omission plus the approved sampling profile. A small bounded in-memory last-valid cache may support Live presentation, but each reused value remains clearly **old**, is never re-stamped as measured now, and never creates a new raw observation. All schedules use a common monotonic tick source and bounded collector work with no per-metric goroutine explosion.
 
-New metric types must declare units, source, cadence, stable entity identifiers, quality/freshness, per-metric aggregation math, resource budget and mock/native tests. Unsupported Disk I/O on a platform is \`unsupported\`, never a measured zero.
+New metric types must declare units, source, cadence, stable entity identifiers, quality/freshness, per-metric aggregation math, resource budget and mock/native tests. Unsupported Disk I/O on a platform is `unsupported`, never a measured zero.
 
 ### AD-02 — First-class quality, freshness and metric-specific coverage
 
-- \`valid\`: actual accepted measurement at \`measured_at_utc\`, including legitimate zero.
-- \`not_due\`: no collection scheduled on this frame; **not** a failed or missing observation.
-- \`missing\`: scheduled reading or frame was absent; counts against expected opportunities.
-- \`error\`: due read/parse/permission failed; typed redacted diagnostic, no valid value.
-- \`counter_reset\`: newly observed counter could not yield a valid rate for this interval; may reset baseline.
-- \`stale\`: previously valid cached value is older than its **metric-specific freshness TTL**; carries old timestamp and is never a new observation.
-- \`unsupported\`: kernel/source does not expose the metric; not confused with transient failure.
+- `valid`: actual accepted measurement at `measured_at_utc`, including legitimate zero.
+- `not_due`: no collection scheduled on this frame; **not** a failed or missing observation.
+- `missing`: scheduled reading or frame was absent; counts against expected opportunities.
+- `error`: due read/parse/permission failed; typed redacted diagnostic, no valid value.
+- `counter_reset`: newly observed counter could not yield a valid rate for this interval; may reset baseline.
+- `stale`: previously valid cached value is older than its **metric-specific freshness TTL**; carries old timestamp and is never a new observation.
+- `unsupported`: kernel/source does not expose the metric; not confused with transient failure.
 
-Default freshness TTL is **2 × configured cadence + allowed scheduler jitter margin**, explicitly bounded and versioned per metric. The cache may expose \`last_valid_at_utc\`/age to Live but does not replace invalid/absent readings. A cached sample can be *not newly measured* even when still within TTL: \`freshness\` and \`observation_status\` must be independent.
+Default freshness TTL is **2 × configured cadence + allowed scheduler jitter margin**, explicitly bounded and versioned per metric. The cache may expose `last_valid_at_utc`/age to Live but does not replace invalid/absent readings. A cached sample can be *not newly measured* even when still within TTL: `freshness` and `observation_status` must be independent.
 
-On a full uninterrupted UTC minute, expected nominal opportunities are 60 CPU/Network/Memory/Disk-I/O observations, **12** Load observations and **2** Filesystem-capacity observations. A quarter has 900, 180 and 30 respectively. Startup, downtime, phase alignment and clock anomaly may change the actual due/attempted values; retain explicit profile and due/gap counts rather than falsely assigning a full observation to an offline host. The global \`expected_slots\` and \`observed_slots\` in \`aggregates\` describe **1Hz frame availability only**, not every metric's coverage. Per-metric actual expected/due/valid/error and per-entity coverage belong in \`summary_json\`/\`quality_json\`.
+On a full uninterrupted UTC minute, expected nominal opportunities are 60 CPU/Network/Memory/Disk-I/O observations, **12** Load observations and **2** Filesystem-capacity observations. A quarter has 900, 180 and 30 respectively. Startup, downtime, phase alignment and clock anomaly may change the actual due/attempted values; retain explicit profile and due/gap counts rather than falsely assigning a full observation to an offline host. The global `expected_slots` and `observed_slots` in `aggregates` describe **1Hz frame availability only**, not every metric's coverage. Per-metric actual expected/due/valid/error and per-entity coverage belong in `summary_json`/`quality_json`.
 
-Example in one minute: CPU **40/60** valid and Load **8/12** valid are distinct coverages; on healthy 5s Load, four intervening 1s frames without Load are \`not_due\`, not missing. A 30s Filesystem check can only report **measured** min/max/peak; no claim to detect changes between checks. A duration-weighted gauge average must be calculated only over explicit, bounded **freshness-valid intervals**, documented as last-observation-held estimate if applied (not new observations); never carry old values across stale/untrusted gaps. For counters, use legitimate monotonic delta/time intervals and never average absolute byte totals as though rates.
+Example in one minute: CPU **40/60** valid and Load **8/12** valid are distinct coverages; on healthy 5s Load, four intervening 1s frames without Load are `not_due`, not missing. A 30s Filesystem check can only report **measured** min/max/peak; no claim to detect changes between checks. A duration-weighted gauge average must be calculated only over explicit, bounded **freshness-valid intervals**, documented as last-observation-held estimate if applied (not new observations); never carry old values across stale/untrusted gaps. For counters, use legitimate monotonic delta/time intervals and never average absolute byte totals as though rates.
 
 ### AD-03 — Simplicity, early health and vertical-slice delivery
 
