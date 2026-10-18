@@ -1,8 +1,10 @@
 package collector
 
 import (
+	"errors"
 	"math"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -41,5 +43,24 @@ func TestDiskstatsValidSectorsConvertedToBytes(t *testing.T) {
 	}
 	if got["sda"] != [2]uint64{1536, 3584} {
 		t.Fatalf("unexpected disk I/O counters: %v", got)
+	}
+}
+
+func TestFilesystemStatfsErrorRejectsPartialInventory(t *testing.T) {
+	input := "/dev/sda1 /mnt/first ext4 rw 0 0\n/dev/sdb1 /mnt/failure ext4 rw 0 0\n"
+	want := errors.New("statfs denied")
+	seen := 0
+	got, err := filesystemsFrom(strings.NewReader(input), func(path string, st *syscall.Statfs_t) error {
+		seen++
+		if path == "/mnt/failure" {
+			return want
+		}
+		st.Blocks = 100
+		st.Bavail = 50
+		st.Bsize = 4096
+		return nil
+	})
+	if !errors.Is(err, want) || got != nil || seen != 2 {
+		t.Fatalf("partial filesystem data accepted: got=%v err=%v probes=%d", got, err, seen)
 	}
 }
