@@ -1,0 +1,26 @@
+[Unit]
+Description=Infrasible Monitoring Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=infrasible-agent
+Group=infrasible-agent
+UMask=0077
+ExecStart=/usr/bin/infrasible-agent run --config=/etc/infrasible-agent/config.json
+StateDirectory=infrasible-agent
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/infrasible-agent
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

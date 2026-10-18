@@ -1,0 +1,52 @@
+package agent
+
+import (
+ "context"
+ "log/slog"
+ "os"
+ "sync"
+ "time"
+
+ "github.com/gemvc/infrasible-agent/internal/collector"
+ "github.com/gemvc/infrasible-agent/internal/config"
+ "github.com/gemvc/infrasible-agent/internal/storage"
+ "github.com/gemvc/infrasible-agent/internal/transport"
+)
+
+type Agent struct { Config config.Config; Store *storage.Store; Collector collector.Reader; Log *slog.Logger }
+func New(c config.Config,s *storage.Store,l *slog.Logger)*Agent{return &Agent{Config:c,Store:s,Collector:collector.NewLinux(),Log:l}}
+func (a *Agent) Run(ctx context.Context)error{
+ live:=make(chan collector.Frame,2)
+ var workers sync.WaitGroup
+ sender:=transport.Sender{Servers:a.Config.MonitoringServers,Store:a.Store,Log:a.Log}
+ workers.Add(2)
+ go func(){defer workers.Done();sender.Live(ctx,live)}()
+ go func(){defer workers.Done();sender.Persistence(ctx)}()
+ ticker:=time.NewTicker(time.Second);defer ticker.Stop()
+ roll:=time.NewTicker(10*time.Second);defer roll.Stop()
+ a.Log.Info("agent running","agent_id",a.Store.AgentID(),"pid",os.Getpid())
+ defer func(){close(live);workers.Wait()}()
+ for{
+  select{
+  case <-ctx.Done():return nil
+  case t:=<-ticker.C:
+   // Tick events are not re-created to cover missed intervals.
+   f:=a.Collector.Read(ctx,t)
+   writeCtx,cancel:=context.WithTimeout(ctx,3*time.Second)
+   err:=a.Store.Save(writeCtx,f)
+   cancel()
+   if err!=nil{
+    a.Log.Error("STORAGE_DEGRADED: lost sample; no false durability","error",err)
+   }
+   // Independent Live; a blocked bridge cannot block collector/SQLite.
+   select{case live<-f:default:
+    select{case <-live:default:}
+    select{case live<-f:default:}
+   }
+  case <-roll.C:
+   workCtx,cancel:=context.WithTimeout(ctx,8*time.Second)
+   if e:=a.Store.Finalize(workCtx,time.Now());e!=nil{a.Log.Error("aggregation degraded","error",e)}
+   cancel()
+  }
+ }
+}
