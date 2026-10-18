@@ -1,5 +1,7 @@
 # Infrasible Monitoring Agent — Phased Implementation Backlog
 
+> **GREENFIELD OVERRIDE — owner decision (2026-10-18):** This product has **zero users, zero deployed installations and no production data**. Build the new Agent from a clean install. **No legacy v0.1.0 CLI consumer migration, side-by-side compatibility, backward-compatibility gate, data-import path or preservation of old binaries is required.** Existing source/release/docs are read-only reference material for useful collector logic and provenance, not a product compatibility obligation. Initial SQLite creation is fresh; retain schema version identification and fail-closed invalid-version detection, but **do not implement pre-launch database migration/upgrade/rollback machinery**. Preserve crash-safe restart of the new DB, same-host disaster recovery, mTLS identity/certificate rotation, fresh provisioning, source-quality tests, secure packaging and verified external API contracts. Normal future upgrades can be designed after first release. This owner decision supersedes any conflicting historical sentence or AC below; any obsolete migration-related AC/ticket is **NOT APPLICABLE**, not a release blocker.
+
 **Status:** FINAL OWNER-APPROVED PRODUCT/ENGINEERING ARCHITECTURE (DEC-01–11 + AD-01–03, 2026-10-18); G00 EVIDENCE / EXTERNAL SIGN-OFF PENDING; NOT AUTHORIZED FOR IMPLEMENTATION  
 **Scope:** standalone open-source Linux Agent and the *minimum* external boundary contracts needed to test it  
 **Repository:** https://github.com/gemvc/infrasible-agent  
@@ -34,7 +36,7 @@ The historical UI obtains data exclusively through the central PostgreSQL-backed
 | INV-07 | UTC windows use `[start,end)`, 60s/900s, and preserve **per-metric cadence, scheduled opportunities, actual valid/error/missing counts, original measured times, freshness, measured extrema/peaks and quality** through rollups; frame-level 60/900 counts do not replace slow-metric 12/2 counts per minute. |
 | INV-08 | Endpoint priority is the **order of the N-element array**; at most one active endpoint **per channel**; no two-server limit or parallel duplicate active delivery. |
 | INV-09 | Authenticated TLS is **not** sufficient by itself: the target must separately authorize this Agent and the requested channel. Invalid identity/cert/permissions fail closed. |
-| INV-10 | Preserve audited collector correctness, but **the new public Agent is daemon-only and removes v1 version/snapshot/stream --json CLI**. Block silent incompatible replacement of legacy Desktop consumers; proprietary SSH/credentials remain out of scope. |
+| INV-10 | Preserve audited collector correctness, but **the new public Agent is daemon-only and removes v1 version/snapshot/stream --json CLI**. No legacy Desktop consumers or migration exist; proprietary SSH/credentials remain out of scope. |
 | INV-11 | **Owner-approved AD-01:** one nominal 1Hz raw frame; CPU/Network/Memory/Swap/Disk-I/O measurements 1s, Load 5s, Filesystem capacity 30s, host metadata startup/change. `not_due` is never a missing due observation and cached old values never create fresh samples. |
 | INV-12 | **Owner-approved AD-02:** `valid` zero, `missing`, `error`, `counter_reset`, `unsupported`, `not_due`, and derived `stale` have distinct semantics; originals and age/TTL remain in Live and per-metric data-quality/coverage in 1m/15m. |
 | INV-13 | **Owner-approved AD-03:** lean single non-root Go daemon; built-in bounded collectors and workers, health from first vertical slice; no generic plugins/AI/embedded UI, inbound public REST API, separate queue store or automatic host mutation. |
@@ -81,7 +83,7 @@ Source-inspection findings to reproduce in tests rather than assume fixed:
 | DEC-04 | ACKed final 900s retention 60 days; unACKed protected until ACK | ENOSPC/61d/replay/health tests |
 | DEC-05 | Persistence HA only verified shared durable/dedup domain, Live independent | Domain proof and split-domain negative tests |
 | DEC-06 | CGO-free Pure Go SQLite WAL + synchronous=FULL, controlled writer | Driver benchmark/native ARM and crash durability |
-| DEC-07 | Daemon-only, **remove version/snapshot/stream --json** from new binary | Versioned legacy Desktop CLI consumer migration; core SSH unchanged |
+| DEC-07 | Daemon-only, **remove version/snapshot/stream --json** from new binary | Greenfield fresh install; zero legacy consumer migration; core SSH unchanged |
 | DEC-08 | Peak RSS <=128MB; mean CPU <=5% of one core; jitter P99 <=500ms | Native reproducible test; disk and target >=2 final/s replay |
 | DEC-09 | Apache-2.0 intended after rights audit, NOTICE and signed release | Current MIT remains; legal/provenance/signature verification |
 | DEC-10 | Controlled corruption recovery, same-host ID retained, cloned host gets new ID | Restore/clone/registrar identity tests |
@@ -98,7 +100,7 @@ Source-inspection findings to reproduce in tests rather than assume fixed:
 
 **Final owner-approved metric refinement AD-01–03 (2026-10-18):** one 1Hz raw frame, metric schedules 1s CPU/Network/Memory/Swap/Disk I/O, 5s Load, 30s filesystem capacity, metadata on startup/change; `valid/missing/error/counter_reset/not_due/stale/unsupported` distinct, original timestamps and age/TTL on Live, per-metric coverage/peaks retained through 1m/15m. One small non-root Go daemon with bounded modules and health from first vertical slice. This is **approved design**, not implementation or G00 test execution.
 
-**Remaining G00 external agreements:** Bridge ingress/wire/subscriber behavior; Persistence verified durable PostgreSQL ACK, same-domain dedup including >30-day late arrivals and hourly/daily reaggregation; PKI issuer/revoke/clone; old Desktop v1 consumer migration; legal license review; QA/Native benchmark rigs. These are **evidence dependencies**, not reopened decisions. **G00 remains BLOCKED** until P00-AC-01–20 and cross-owner sign-off, with implementation authorization separate.
+**Remaining G00 external agreements:** Bridge ingress/wire/subscriber behavior; Persistence verified durable PostgreSQL ACK, same-domain dedup including >30-day late arrivals and hourly/daily reaggregation; PKI issuer/revoke/clone; legal license review; QA/Native benchmark rigs. These are **evidence dependencies**, not reopened decisions. **G00 remains BLOCKED** until P00-AC-01–20 and cross-owner sign-off, with implementation authorization separate.
 
 ## 4. Work management rules
 
@@ -114,7 +116,7 @@ Source-inspection findings to reproduce in tests rather than assume fixed:
 ```text
 P00 product + architecture + boundary approvals
   ├─> P01 baseline correctness & compatibility
-  ├─> P02 schema, SQLite, identity and migrations
+  ├─> P02 fresh SQLite schema, identity and bootstrap
   │     └─> P03 1-second sampling & durable recording
   │            └─> P04 minute rollup
   │                   └─> P05 final 15-minute rollup & retention
@@ -150,11 +152,11 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 | AG-0102 | Correct Linux CPU tick delta accounting (guest duplication, zero/negative deltas, hotplug/reset) and confirm IOWait semantics. | Table-driven synthetic `/proc/stat` tests cover guest, wrap/reset and all-idle; output stays in valid 0–100% ranges, invalid epochs are flagged rather than fabricated. |
 | AG-0103 | Surface partial filesystem/network errors, mount/interface parsing problems, permission loss and counter semantics without treating zeros as valid missing readings. | Fixtures for corrupt `/proc/net/dev`, unreadable mounts, escaped mount paths and permission error; observable quality/error fields with versioned compatibility. |
 | AG-0104 | Daemon-only signal cancellation, controlled writer drain/rollback and graceful shutdown; no public stream command. | SIGTERM/SIGINT cannot strand partial SQLite transaction, socket, goroutine or service process; no per-second SSH. |
-| AG-0105 | Reconcile v0.1.0 release docs, define daemon protocol-major 2 version/health/Hello, protect legacy v1 clients with an explicit migration gate. | Native daemon smoke, old client migration contract, no silent in-place CLI replacement. |
+| AG-0105 | Define clean-install daemon protocol-major 2 version/health/Hello and document new package lifecycle; old v0.1.0 serves only as a reference. | Native clean-install daemon smoke and new protocol contract fixtures; no legacy migration tests. |
 
-**Gate G01:** AC-001–004 pass; existing v1 CLI consumers protected by **versioned migration**, not by retaining public CLI in the new daemon.
+**Gate G01:** AC-001–004 pass for greenfield daemon; no legacy consumer migration gate exists.
 
-## P02 — SQLite foundation, identity and schema migrations (P0)
+## P02 — SQLite foundation, identity and clean bootstrap (P0)
 
 **Outcome:** one crash-safe database; no transport or aggregation yet. **Prereq:** G00, DEC-02/04/06/10/11.
 
@@ -163,10 +165,10 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 | AG-0201 | Benchmark and select maintained SQLite Go driver against CGO-free builds, lock handling and all target architectures; record driver and durability ADR. | Build all 4 targets; run native smoke for accessible hosts, identify unqualified targets; microbench WAL write/commit, FULL vs alternatives; results attached. |
 | AG-0202 | Implement one DB open/close lifecycle, a controlled writer, busy handling, WAL, approved sync level and integrity/readiness reporting. | Competing readers + one writer under stress cause no deadlock or corruption; injected BUSY returns bounded retry/health; abrupt termination is recoverable. |
 | AG-0203 | Create only `server_info`, `raw_samples`, `aggregates`; define keys, indexes, explicit `saved`, interval 60/900, completeness/lineage, checksum/record ID, `persisted_at` final-only. | Schema introspection verifies exactly three application tables, indexes/constraints enforced and invalid resolution/state rejected; no fourth queue table. |
-| AG-0204 | Implement schema versioning and forward migration with rollback/backup handling, old-binary incompatibility rules, clean first-install bootstrap. | Empty/new DB, upgrade, failed migration and incompatible downgrade tests; no loss/partial upgrade; PRAGMA integrity test passes. |
+| AG-0204 | Implement atomic first-install schema bootstrap, `user_version`, schema validation and fail-closed handling for an unknown version; no pre-launch migrations. | Empty DB, interrupted bootstrap, unexpected schema, restart and integrity tests pass. |
 | AG-0205 | Persist immutable `agent_id` and host identity/metadata, config association and restore/reinstall policy; ensure cloned machines cannot silently duplicate identity. | Restart preserves identity, clone/re-enroll test rejects collision, wrong-host restore requires explicit recovery approval, no secret leaked via logs. |
 
-**Gate G02:** AC-005–008 pass; DB invariants validated under forced crash, filesystem lock and migration failure.
+**Gate G02:** AC-005–008 pass; DB invariants validated under forced crash, filesystem lock and interrupted first-time bootstrap.
 
 ## P03 — Continuous 1Hz frames and independent metric sampling (P0)
 
@@ -266,7 +268,7 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 
 **Gate G09:** AC-039–044 pass with recorded N=3 failover/failback traces and domain-isolation negative tests.
 
-## P10 — Unattended operations, security, packaging, migration (P0/P1)
+## P10 — Unattended operations, security and clean-install packaging (P0/P1)
 
 **Outcome:** manageable Linux service without changing Desktop core SSH. **Prereq:** G01–G09, DEC-07/09/10.
 
@@ -274,10 +276,10 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 |---|---|---|
 | AG-1001 | Daemon-only entrypoint and safe install/uninstall/systemd service, journald health, liveness and deterministic drain/restart. | systemd restart/stop/kill leaves no half-committed sample/orphan process/privilege escalation/public listener. |
 | AG-1002 | Least-privilege runtime user, controlled DB/config/cert paths, strict key permissions, refusal of unsafe config/cert ownership, log redaction and resource limits. | Non-root smoke; permission/owner attacks rejected; secrets never printed, world-writable key/config rejected. |
-| AG-1003 | Versioned daemon-v2 migration/upgrade/rollback for binaries, schema, certs and legacy SSH-installed v0.1.0 coexistence. | Unsupported downgrade blocks; no silent incompatible replacement for old Desktop CLI; existing SSH core unchanged. |
+| AG-1003 | Specify and test fresh daemon installation, repeatable provisioning, secure startup, clean removal and same-host disaster recovery; defer post-release upgrade migration. | Native clean-install/removal tests pass; identity/recovery safe; core SSH unchanged; no legacy package coexistence. |
 | AG-1004 | Sign/check release provenance and artifact digests; update tar/deb/rpm for approved service layout, new deps and correct license/copyright/NOTICE. | Independently verify trusted signature and SHA, package metadata, install/upgrade/uninstall on native supported OS, no leftover service state after safe uninstall. |
 | AG-1005 | Expand CI to protocol, failpoint, race, security, packaging, signed release and **native** ARMv6/ARMv7/ARM64 qualification (lab or controlled emulation clearly labeled). | Cross-compiles all targets; native reference runs recorded separately; unsupported targets explicitly excluded/marked experimental before publish. |
-| AG-1006 | Complete docs: install, registration, recovery, trust/rotation, protocol versions, resource/sizing, runbook, licensing; preserve changelog of migration. | Fresh-user documentation drill from bare Linux VM to observed live + durable historical mock ACK, with no missing secret steps. |
+| AG-1006 | Complete docs: clean install, registration, recovery, trust/rotation, protocol versions, resource/sizing, runbook and licensing. | Fresh-install documentation drill from bare Linux VM to observed live + durable historical mock ACK, with no missing secret steps. |
 
 **Gate G10:** AC-045–051 pass; real deployment rehearsal on disposable hosts only, security/license approvals attached. Production deployment is a separate authorization.
 
@@ -302,7 +304,7 @@ The **authoritative Given/When/Then acceptance text** is [AGENT_ACCEPTANCE_AND_T
 | IDs | Phase | Coverage |
 |---|---|---|
 | P00-AC-01–20 | P00 | Design/docs/external agreement sign-off |
-| AC-001–004 | P01 | Collector/daemon/legacy migration |
+| AC-001–004 | P01 | Collector/daemon/clean installation |
 | AC-005–008 | P02 | SQLite/identity/recovery |
 | AC-009–012 | P03 | 1Hz raw frames; real per-metric 1s/5s/30s cadence, due failures, fresh/stale and early health |
 | AC-013–017 | P04 | 1m per-metric opportunity denominators, quality and saved atomicity |
@@ -311,7 +313,7 @@ The **authoritative Given/When/Then acceptance text** is [AGENT_ACCEPTANCE_AND_T
 | AC-028–031 | P07 | stateless live bridge |
 | AC-032–038 | P08 | durable ACK/replay |
 | AC-039–044 | P09 | N endpoint HA |
-| AC-045–051 | P10 | systemd/signed native packages/migration |
+| AC-045–051 | P10 | systemd/signed native packages/clean installation |
 | AC-052–055 | P11 | E2E/fault/performance/release |
 
 Negative fixture inventory and explicit G00–G11 evidence/sign-off are maintained only in the canonical acceptance matrix.
@@ -357,7 +359,7 @@ Recommended evidence path convention (PROPOSED; avoid committing bulky test outp
 - [ ] No history through Bridge, no raw/minute to Persistence API, no PostgreSQL directly from Agent; no cached stale value reported as a newly measured metric.
 - [ ] 60-day final history and 61-day pending/recovery policy proved without silent data loss.
 - [ ] Negative mTLS/authz, replay, clone and cert rotation cases pass.
-- [ ] Daemon-v2 migration evidence protects legacy CLI v1 consumers; no incompatible silent replacement; Desktop SSH remains untouched.
+- [ ] Fresh-install daemon-v2 contract verified; no legacy CLI migration required; Desktop SSH remains untouched.
 - [ ] Updated install/config/recovery docs, license/NOTICE and publisher-signature verification pass.
 - [ ] Product, architecture, data, security, QA, and external-contract owners explicitly approve.
 - [ ] No code/production mutation or release is inferred from approval of this backlog document alone.
