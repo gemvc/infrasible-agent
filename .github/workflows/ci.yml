@@ -27,10 +27,13 @@ jobs:
           (cd dist && sha256sum -c SHA256SUMS)
           dpkg-deb --info dist/infrasible-agent_*_amd64.deb
           rpm -qip dist/*.rpm
-      - name: Smoke test native binary
+      - name: Smoke test historical CLI baseline
         run: |
-          ./dist/infrasible-agent-linux-amd64 version --json | grep -q '"agent_version":"0.1.0"'
-          ./dist/infrasible-agent-linux-amd64 snapshot --json | grep -q '"schema_version":"1.0"'
+          set -euo pipefail
+          version="$(sed -n 's/^const agentVersion = "\([^"]*\)"/\1/p' version.go)"
+          test -n "$version"
+          ./dist/infrasible-agent-linux-amd64 version --json | grep -Fq "\"agent_version\":\"$version\""
+          ./dist/infrasible-agent-linux-amd64 snapshot --json | grep -Fq '"schema_version":"1.0"'
           set +e
           timeout 4s ./dist/infrasible-agent-linux-amd64 stream --json > /tmp/agent-stream.ndjson
           result=$?
