@@ -292,7 +292,7 @@ func readFS() (map[string]map[string]uint64, error) {
 		}
 		var st syscall.Statfs_t
 		if e := syscall.Statfs(mount, &st); e != nil {
-			continue
+			return nil, fmt.Errorf("statfs %q: %w", mount, e)
 		}
 		out[mount] = map[string]uint64{"total": st.Blocks * uint64(st.Bsize), "available": st.Bavail * uint64(st.Bsize)}
 	}
