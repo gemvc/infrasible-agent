@@ -302,7 +302,12 @@ func fromRaw(rows *sql.Rows) (map[string]Statistic, int64, error) {
 		}
 		for name, o := range metrics {
 			st := result[name]
-			st.Due++
+			// Numeric observations are counted by record(); counting them
+			// here as well would double the scheduled due opportunity.
+			_, scalar := o.Value.(float64)
+			if o.Status != "valid" || !scalar {
+				st.Due++
+			}
 			if o.Status != "valid" {
 				st.Failed++
 			}
