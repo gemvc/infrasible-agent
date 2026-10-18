@@ -5,7 +5,7 @@
 
 > **Greenfield scope:** New clean-install daemon; no legacy consumers, migrations or compatibility gates. Canonical decision: [Product Requirements](AGENT_PRODUCT_REQUIREMENTS.md), section 2.
 
-**Status:** FINAL OWNER-APPROVED PRODUCT/ENGINEERING ARCHITECTURE (DEC-01–11 + AD-01–03, 2026-10-18); G00 EVIDENCE / EXTERNAL SIGN-OFF PENDING; NOT AUTHORIZED FOR IMPLEMENTATION  
+**Status:** FINAL OWNER-APPROVED PRODUCT/ENGINEERING ARCHITECTURE (DEC-01–11 + AD-01–03, 2026-10-18); G00 EVIDENCE / EXTERNAL SIGN-OFF PENDING; INITIAL DAEMON CODE EXISTS; EXTERNAL SIGN-OFF AND ACCEPTANCE PENDING  
 **Scope:** standalone open-source Linux Agent and the *minimum* external boundary contracts needed to test it  
 **Repository:** https://github.com/gemvc/infrasible-agent  
 **Baseline:** implementation `2f93988bf37243d7a7d57d1a4d4172bec1b8302c`; approved-doc source audit `main@8b43c8a20d3a00fb030634c46d4677eaf52661ed` (2026-10-18)  
@@ -58,7 +58,7 @@ Files inspected on the pinned baseline:
 | `version.go` | v0.1.0; `version --json`; schema/protocol v1.0; capabilities `snapshot`, `stream` | REPLACE public CLI contract with daemon version/Hello contract; reuse only suitable metadata logic |
 | `main_test.go`; `version_test.go` | Basic parser/contract tests; no persistence, crash, failover or mTLS tests | KEEP and ADD cases |
 | `go.mod` | Go 1.23, no third-party dependencies | REEVALUATE only justified SQLite/transport dependencies |
-| `docs/PROTOCOL.md` | Current stdout JSON/SSH-client v1 contract; counter rates calculated by client | KEEP as AS-IS record; introduce separately versioned network contract |
+| historical Git tag `v0.1.0` protocol documentation | Current stdout JSON/SSH-client v1 contract; counter rates calculated by client | KEEP as AS-IS record; introduce separately versioned network contract |
 | `docs/INSTALLATION.md`; `README.md` | Baseline installation/docs; some release/supported-platform statements need reconciliation | UPDATE only once decisions land |
 | `scripts/package-linux.sh` | CGO-free linux amd64, arm64, armv7, armv6 builds; tarballs, select deb/rpm, SHA256SUMS and legacy raw sidecars | KEEP supported outputs; HARDEN and QUALIFY |
 | `.github/workflows/ci.yml`; `release.yml` | vet, race tests, package/build/checksum; native amd64 CLI smoke; tag-driven release | EXTEND platform/security/runtime gates |
@@ -350,7 +350,7 @@ bash scripts/package-linux.sh
 
 Additional stage commands/scripts to **add**, not assumed existing: schema constraint suite, deterministic fake-clock 61-day scenario, per-transaction killpoint harness, expired/revoked certificate suite, mock Bridge/Persistence compatibility suite, lost-ACK central dedup test, N=3 HA suite, long soak/high-cardinality benchmark, signed artifact verification, native ARM matrix. CI must distinguish required CI tests from manual or platform-lab acceptance; manual tests require recorded evidence.
 
-Recommended evidence path convention (PROPOSED; avoid committing bulky test output): `docs/design/evidence/README.md` describing CI links, signed benchmark reports, runner images and known limitations. Avoid duplicate AS-IS specs: `README.md` and existing `docs/PROTOCOL.md` remain current-version operational docs; design documents define approved target architecture.
+Recommended evidence path convention (PROPOSED; avoid committing bulky test output): `docs/design/evidence/README.md` describing CI links, signed benchmark reports, runner images and known limitations. Avoid duplicate AS-IS specs: `README.md` and existing historical Git tag `v0.1.0` protocol documentation remain current-version operational docs; design documents define approved target architecture.
 
 **Release candidate checklist (all required):**
 
