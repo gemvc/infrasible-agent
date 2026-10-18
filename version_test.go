@@ -2,8 +2,14 @@ package main
 
 import "testing"
 
+func TestAgentVersion(t *testing.T) {
+	if agentVersion != "0.3.0" {
+		t.Fatalf("unexpected agent version: %s", agentVersion)
+	}
+}
+
 func TestProtocolVersion(t *testing.T) {
-	if agentVersion != "0.2.0" || protocolMajor != 2 || protocolMinor != 0 {
-		t.Fatal("invalid v2 version")
+	if protocolMajor != 2 || protocolMinor != 0 {
+		t.Fatalf("unexpected protocol version: %d.%d", protocolMajor, protocolMinor)
 	}
 }
