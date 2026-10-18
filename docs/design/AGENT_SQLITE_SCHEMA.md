@@ -217,7 +217,7 @@ A zero affected-row result must be reconciled as already-ACKed or suspicious mis
 
 **Raw:** cleanup `WHERE saved=1` only, after minute transaction. **Minute:** cleanup only after quarter durable local creation. No short time-based deletion of unsaved raw.
 
-## 8. Disk-full, WAL, migration, restore
+## 8. Disk-full, WAL, fresh bootstrap and restore
 
 Storage pressure is inherently finite. Maintain metrics of DB/WAL bytes, free bytes, raw and pending rows/age, estimated ingest/day and last durable write. Early warning thresholds start with measured per-host volume; if insufficient space or SQLite returns ENOSPC/BUSY beyond bounded retry, set `STORAGE_DEGRADED`, preserve unACKed data, never fake success, expose missed samples/gap and continue independent Live if possible. No fixed storage cap can promise 61+ days of data on arbitrary disks. WAL checkpoints must be bounded and not run with unbounded reader starvation; pressure thresholds must account for WAL growth.
 
