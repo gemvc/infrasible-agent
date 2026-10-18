@@ -3,9 +3,9 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"github.com/gemvc/infrasible-agent/internal/collector"
 	"os"
 	"os/exec"
-	"github.com/gemvc/infrasible-agent/internal/collector"
 	"path/filepath"
 	"testing"
 	"time"
