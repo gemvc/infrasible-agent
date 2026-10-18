@@ -278,8 +278,12 @@ func readFS() (map[string]map[string]uint64, error) {
 		return nil, e
 	}
 	defer f.Close()
+	return filesystemsFrom(f, syscall.Statfs)
+}
+
+func filesystemsFrom(r io.Reader, statfs func(string, *syscall.Statfs_t) error) (map[string]map[string]uint64, error) {
 	out := map[string]map[string]uint64{}
-	s := bufio.NewScanner(f)
+	s := bufio.NewScanner(r)
 	skip := map[string]bool{"proc": true, "sysfs": true, "tmpfs": true, "devtmpfs": true, "cgroup": true, "cgroup2": true, "overlay": true, "squashfs": true}
 	for s.Scan() {
 		p := strings.Fields(s.Text())
@@ -291,7 +295,7 @@ func readFS() (map[string]map[string]uint64, error) {
 			continue
 		}
 		var st syscall.Statfs_t
-		if e := syscall.Statfs(mount, &st); e != nil {
+		if e := statfs(mount, &st); e != nil {
 			return nil, fmt.Errorf("statfs %q: %w", mount, e)
 		}
 		out[mount] = map[string]uint64{"total": st.Blocks * uint64(st.Bsize), "available": st.Bavail * uint64(st.Bsize)}
