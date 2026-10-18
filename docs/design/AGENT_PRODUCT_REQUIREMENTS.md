@@ -1,5 +1,7 @@
 # Infrasible Monitoring Agent — Product Requirements
 
+> **GREENFIELD OVERRIDE — owner decision (2026-10-18):** This product has **zero users, zero deployed installations and no production data**. Build the new Agent from a clean install. **No legacy v0.1.0 CLI consumer migration, side-by-side compatibility, backward-compatibility gate, data-import path or preservation of old binaries is required.** Existing source/release/docs are read-only reference material for useful collector logic and provenance, not a product compatibility obligation. Initial SQLite creation is fresh; retain schema version identification and fail-closed invalid-version detection, but **do not implement pre-launch database migration/upgrade/rollback machinery**. Preserve crash-safe restart of the new DB, same-host disaster recovery, mTLS identity/certificate rotation, fresh provisioning, source-quality tests, secure packaging and verified external API contracts. Normal future upgrades can be designed after first release. This owner decision supersedes any conflicting historical sentence or AC below; any obsolete migration-related AC/ticket is **NOT APPLICABLE**, not a release blocker.
+
 **Status:** FINAL OWNER-APPROVED PRODUCT DESIGN (2026-10-18), including independent metric cadences and first-class quality/freshness. G00 evidence and external-interface sign-offs remain pending; no runtime implementation is claimed.
 **Scope:** standalone, open-source Linux Agent in `gemvc/infrasible-agent`. **Source baseline:** `main@8b43c8a20d3a00fb030634c46d4677eaf52661ed` (current source is legacy v0.1.0).
 **Change authority:** owner explicitly approved DEC-01–11 and the reviewed engineering resolutions on 2026-10-18, then authorized repository/backlog documentation updates. This does **not** authorize runtime implementation, changes to Transible Desktop/SSH, other services, production deployments, releases, or a license change without legal clearance.
@@ -15,7 +17,7 @@ A small standalone Linux daemon runs a nominal **1 Hz frame/scheduler** with **i
 
 ## 2. Scope and exclusions
 
-**In:** Linux collectors, 1Hz frames with per-metric scheduling and bounded collection, explicit measured-at/quality/freshness, one local SQLite, metric-quality-preserving 1m and 15m rollups, 60-day acknowledged final retention, indefinite pending retention while capacity permits, outbound Agent-initiated Live WSS and Persistence HTTPS with mTLS, one ordered versioned N-endpoint config, domain-safe per-channel failover, registration/rotation interface, systemd unattended service, health, secure signed packages, migration documentation, tests and mock contracts.
+**In:** Linux collectors, 1Hz frames with per-metric scheduling and bounded collection, explicit measured-at/quality/freshness, one local SQLite, metric-quality-preserving 1m and 15m rollups, 60-day acknowledged final retention, indefinite pending retention while capacity permits, outbound Agent-initiated Live WSS and Persistence HTTPS with mTLS, one ordered versioned N-endpoint config, domain-safe per-channel failover, registration/rotation interface, systemd unattended service, health, secure signed packages, clean-install documentation, tests and mock contracts.
 
 **Out:** Desktop UI/SSH core/vault alterations, shipping Live Bridge or PostgreSQL/Persistence/Historical API here, under-live tracking, direct database writes, inbound public metrics server, Redis/JSONL/queue database/fourth application table, guaranteed lossless live event delivery, historical replay via Bridge, automatic destructive recovery, unconditional Apache-2.0 relicensing, automatic production deployment.
 
@@ -29,7 +31,7 @@ A small standalone Linux daemon runs a nominal **1 Hz frame/scheduler** with **i
 | DEC-04 | Acknowledged final 15m rows expire after **60 days**; unacknowledged rows survive beyond 60 days until a valid ACK | Explicit disk-full/degraded and operator recovery contract; no infinite physical-storage claim |
 | DEC-05 | Persistence failover only among endpoints with **verified shared persistence/dedup domain**; Live failover independent | Domain assertion must be verified, not merely config text |
 | DEC-06 | **Pure Go SQLite, WAL, synchronous=FULL, one controlled writer** | Exact library chosen after native ARM/AMD benchmark and failure tests |
-| DEC-07 | **Daemon-only new Agent**; old `version/snapshot/stream --json` public commands removed | Versioned/bounded Desktop consumer migration; no silent in-place replacement |
+| DEC-07 | **Daemon-only greenfield Agent**; old `version/snapshot/stream --json` commands are not supported | No legacy user/client migration or backward-compatibility obligation; clean installation only |
 | DEC-08 | Peak **RSS <= 128 MB**; mean **CPU <= 5% of one core**; sampling schedule jitter **P99 <= 500 ms** | Definitions, reference rigs, cardinality, disk and replay benchmark below |
 | DEC-09 | Apache-2.0 intended **after copyright/legal audit**, proper NOTICE, signed/verifiable release artifacts | Existing repository remains MIT until audit and explicit legal action |
 | DEC-10 | **Controlled fail-closed corruption recovery**; same-host restore preserves identity; clones require distinct identity | Clone assurance and Registration revocation policy |
@@ -52,9 +54,9 @@ Approved engineering defaults below may be tuned only with a recorded evidence-b
 | FR-09 | Same ID + identical immutable payload on retries, including ACK-lost/commit-succeeded; the central domain must deduplicate and reject same-ID/different-payload. |
 | FR-10 | One active endpoint **per channel**, priority by array index, independently eligible; never fail over Persistence to an unrelated unverified domain; bounded reconnect and hysteresis. |
 | FR-11 | Initial SSH provisioning does not alter Desktop core SSH; Agent owns no SSH credentials; subsequent operation is independent of SSH. |
-| FR-12 | Fail closed on missing/invalid identity, revoked trust, SQLite corruption, unsafe downgrade or unresolved host clone; preserve diagnostics without secret disclosure or silent data deletion. |
+| FR-12 | Fail closed on missing/invalid identity, revoked trust, SQLite corruption, unsupported on-disk schema or unresolved host clone; preserve diagnostics without secret disclosure or silent data deletion. |
 | FR-13 | ACKed final rows locally retained for 60 days and then cleanup-eligible; older unACKed final records are retained until ACK (subject to explicit observable storage failure). |
-| FR-14 | New public service interface is daemon-only and protocol-major 2 design; legacy v0.1.0 stays an archived supported-to-migrate artifact, never invisibly overwritten for v1 CLI consumers. |
+| FR-14 | New service is daemon-only with a new explicitly versioned network protocol; old v0.1.0 is historical reference only, not a supported migration artifact or compatibility target. |
 | FR-15 | No external API's advertised availability/ACK/history behavior is inferred from Agent mock implementation; external owners must accept it. |
 | FR-16 | Explicitly distinguish actual `valid` (including true zero), due-but-`missing`, read `error`, `counter_reset`, age-`stale`, `not_due` and `unsupported`. `null`/unknown never equals measured zero, and `stale` never counts as a new observation. |
 | FR-17 | A Live view may hold an old value only with original `measured_at_utc`, age/TTL and old-value status; cached values cannot inflate local raw or aggregate sample counts. After startup absent metrics are unknown until measured. |
@@ -130,7 +132,7 @@ Agent service target: non-root account supervised by systemd on supported distri
 | Persistence API/PostgreSQL | 900s final-only, immutable-ID idempotent durable commit, same-ID/hash semantics, trusted domain and authenticated durable ACK, late arrival >30 days, safe retention/dedup tombstones | Central persistence/data owner and mock fixture |
 | Historical API | PostgreSQL-backed reads only; 15m ~30d, hourly ~1y, daily longer-term and late-arrival reaggregation | Central historical owner |
 | Enrollment/PKI | Short-lived authorized bootstrap, Agent-generated private key, CSR/cert binding, rotation, revocation, channel ACL and clone remediation | Security/registration owner |
-| Transible consumer | Explicit migration off v1 stdout CLI before any new binary takes its place, **without changing Desktop SSH core in this repo** | Desktop integration owner |
+| Transible integration | New clean-install integration against the new Agent network contract; **no legacy CLI consumer migration**, and no changes to Desktop core SSH in this repo | Desktop integration owner |
 | License/security | Copyright ownership, compatible third-party notices, signed verifiable release and revocation procedure | Legal/release owner |
 
 ## 8. Source inventory and source-of-truth
@@ -139,4 +141,4 @@ As-built at baseline: `main.go` (snapshot and CLI stdout), `version.go`, `main_t
 
 Canonical split: this file (product/DEC/SLO), `AGENT_ARCHITECTURE.md` (state and boundaries), `AGENT_SQLITE_SCHEMA.md` (DB), `AGENT_PROTOCOL_AND_SECURITY.md` (wire/auth/HA), `AGENT_ACCEPTANCE_AND_TEST_MATRIX.md` (proof), and the existing `AGENT_IMPLEMENTATION_BACKLOG.md` (single implementation plan). Do **not** add a competing implementation plan.
 
-**G00 rule:** Owner has approved the architectural choices and documentation work, **not** code. Close G00 only when these five documents, the updated backlog, schema/wire/mock and external-interface review evidence meet the gate and all required reviewers sign. Specific driver/native performance and legal migration remain gated by later qualification or legal review.
+**G00 rule:** Owner has approved the architectural choices and documentation work, **not** code. Close G00 only when these five documents, the updated backlog, schema/wire/mock and external-interface review evidence meet the gate and all required reviewers sign. Specific driver/native performance and legal relicensing remain gated by later qualification or legal review.
