@@ -159,3 +159,21 @@ Reference load: pinned Linux kernel, CPU/arch, disk/FS type, interface/mount car
 P00-AC-01–20 -> AG-0001–0005; AC-001–004 -> AG-0101–0105; AC-005–008 -> AG-0201–0205; AC-009–012 -> AG-0301–0304; AC-013–017 -> AG-0401–0404; AC-018–022 -> AG-0501–0505; AC-023–027 -> AG-0601–0604; AC-028–031 -> AG-0701–0704; AC-032–038 -> AG-0801–0805; AC-039–044 -> AG-0901–0905; AC-045–051 -> AG-1001–1006; AC-052–055 -> AG-1101+ in the single backlog. Ticket-specific pass steps must map to these IDs, and missing coverage blocks the corresponding gate. Preserve IDs; update contract and backlog together on changes.
 
 **Source inventory and constraints:** current only runs CLI v1 and CI package scripts; no actual new architecture integration or native four-arch qualification. `docs/PROTOCOL.md` remains historical AS-IS. Only new docs and existing backlog are authorized by this review; no code, live service, Desktop, license, release or production changes.
+
+## 8. Operator-managed config and storage: additional design/implementation acceptance (2026-10-18)
+
+These are **new proposed acceptance cases**; they are not PASSED and do not alter existing AC-001–055 or P00-AC-01–20 IDs. Allocate stable new IDs during backlog/G00 review, with prerequisites in the relevant P02/P06/P10/P11 gates.
+
+| Case | Given / When / Then | Evidence |
+|---|---|---|
+| MGMT-01 | Desktop/operator connects using existing SSH/Ansible; when editing config or inspecting storage, then no new Agent inbound port, SSH implementation or management server exists, and unattended monitoring works with Desktop closed. | Integration/security |
+| MGMT-02 | Given current valid config, when malformed, unknown critical field, unsafe limit, invalid ownership or unauthorized endpoint is staged, then the prior active config continues, error and revision divergence are reported, and no partial reload occurs. | Unit/fault |
+| MGMT-03 | Given valid revisions, when edited atomically over SSH and reloaded or explicitly restarted, then applied versus desired values and required restart are reported; no secret-bearing diagnostic leaks. | Integration |
+| MGMT-04 | Given CPU/RAM/filesystem thresholds and valid/stale/not_due/error/true-zero measurements, when Desktop evaluates alerts, then only eligible real measurements trigger/clear according to duration/hysteresis; closed-Desktop delivery remains an explicitly external Desktop contract. | Desktop contract fixture |
+| MGMT-05 | Given desired Agent CPU/memory limits, when authorized SSH/Ansible applies systemd/cgroup policy, then effective limits are verified, non-root self-elevation is impossible, unsafe undersizing/restart/throttling is observable. | Native Linux/security |
+| MGMT-06 | Given a DB with WAL, unsaved raw, saved raw, 60s, ACKed eligible and protected Pending finals, when inventory is queried, then each count/cutoff is correct and reported physical versus estimated space has non-misleading units. | SQL/native |
+| MGMT-07 | Given safe cleanup dry-run followed by concurrent ACK/finalization/restart, when execution is authorized, then deletion predicates are rechecked transactionally, only lineage-complete/expired ACKed sources are removed, and protected Pending/unsaved raw remain untouched. | Fault/integration |
+| MGMT-08 | Given disk pressure and concurrent 1Hz sampling, when bounded cleanup/checkpoint is attempted, then sampling/storage degradation is explicit, no silent Pending discard occurs and no immediate reclaimed-byte promise is made. | Fault/performance |
+| MGMT-09 | Given arbitrary/unauthorized local invocation, when requesting config write, resource-limit change, destructive cleanup or SQL injection, then OS privilege checks and restricted command schema reject it with redacted audit output. | Security |
+
+**Gate policy:** Document-only updates do not constitute implementation evidence or override blocked G00. Incorporate cases into the canonical ticket/AC mapping during the next approved gate review; until then MGMT cases are explicit additions awaiting ID assignment and external Desktop UX agreement.
