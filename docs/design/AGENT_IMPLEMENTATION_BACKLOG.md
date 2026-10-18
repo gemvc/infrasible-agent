@@ -1,18 +1,18 @@
 # Infrasible Monitoring Agent — Phased Implementation Backlog
 
-**Status:** PROPOSED / NOT APPROVED FOR IMPLEMENTATION  
+**Status:** OWNER-APPROVED DEC-01–11 AND ENGINEERING DESIGN (2026-10-18); G00 EVIDENCE / EXTERNAL SIGN-OFF PENDING; NOT AUTHORIZED FOR IMPLEMENTATION  
 **Scope:** standalone open-source Linux Agent and the *minimum* external boundary contracts needed to test it  
 **Repository:** https://github.com/gemvc/infrasible-agent  
-**Baseline:** `main` at `2f93988bf37243d7a7d57d1a4d4172bec1b8302c` (inspected 2026-10-18)  
+**Baseline:** implementation `2f93988bf37243d7a7d57d1a4d4172bec1b8302c`; approved-doc source audit `main@8b43c8a20d3a00fb030634c46d4677eaf52661ed` (2026-10-18)  
 **Baseline product:** `agentVersion=0.1.0`, `schema_version=1.0`, `protocol 1.0`  
 **Document owner:** Agent architecture/product owner (approval required); execution by assigned engineering and QA owners  
 **Change policy:** This backlog is documentation only. It neither approves implementation nor authorizes changes to Desktop, Bridge, Persistence service, PostgreSQL, or production hosts.
 
-> **How to use this file:** Complete P00 and obtain explicit architecture sign-off before writing Agent implementation code. Implement subsequent phases in dependency order using one small PR per deliverable or logically indivisible set. A phase is **done** only when its evidence and gate are accepted. “Implemented” without tests and failure evidence is **not done**. Entries labeled **PROPOSED** are not product commitments.
+> **How to use this file:** DEC-01–11 and the engineering architecture choices were approved by the owner on 2026-10-18 and documentation updates authorized. This is the single execution backlog. G00 stays BLOCKED pending cross-owner interface/QA evidence. Separate permission is still needed to implement runtime. Implement subsequent phases in dependency order using one small PR per deliverable or logically indivisible set. A phase is **done** only when its evidence and gate are accepted. “Implemented” without tests and failure evidence is **not done**. Entries labeled **PROPOSED** are not product commitments.
 
 ## 1. Product destination and non-negotiable architecture
 
-The Agent runs **on each monitored Linux host**, samples host metrics approximately once per second, stores monitoring state in a **single SQLite database with exactly three logical tables**, and performs UTC 1-minute then UTC 15-minute rollups. Final 15-minute aggregates are locally retained for 60 days, subject to an explicitly approved pending/expiry policy. The Agent initiates outbound connections; there is no periodic reopening of SSH to collect live samples.
+The Agent runs **on each monitored Linux host**, samples host metrics approximately once per second, stores monitoring state in a **single SQLite database with exactly three logical tables**, and performs UTC 1-minute then UTC 15-minute rollups. ACKed final 15-minute aggregates are locally retained 60 days from period end; **unACKed** finals survive past 60 days until valid ACK even if storage eventually degrades visibly. The Agent initiates outbound connections; there is no periodic reopening of SSH to collect live samples.
 
 Two logically independent outbound channels exist:
 
@@ -34,7 +34,7 @@ The historical UI obtains data exclusively through the central PostgreSQL-backed
 | INV-07 | UTC period windows use `[start,end)` and exact 60s / 900s intervals; coverage, sample counts, max/min/last and peak/anomaly evidence survive rollups. |
 | INV-08 | Endpoint priority is the **order of the N-element array**; at most one active endpoint **per channel**; no two-server limit or parallel duplicate active delivery. |
 | INV-09 | Authenticated TLS is **not** sufficient by itself: the target must separately authorize this Agent and the requested channel. Invalid identity/cert/permissions fail closed. |
-| INV-10 | The existing proven collector and public CLI contracts are audited before alteration; proprietary Desktop SSH implementation and credentials are out of scope. |
+| INV-10 | Preserve audited collector correctness, but **the new public Agent is daemon-only and removes v1 version/snapshot/stream --json CLI**. Block silent incompatible replacement of legacy Desktop consumers; proprietary SSH/credentials remain out of scope. |
 
 ### Central retention boundary (NOT to be implemented here)
 
@@ -66,25 +66,34 @@ Source-inspection findings to reproduce in tests rather than assume fixed:
 - The README's “not yet released” language is stale relative to GitHub Release v0.1.0.
 - Cross-compilation for ARM is not native runtime qualification; checksum alone is not artifact publisher authentication.
 
-## 3. Decision register — P00 is a hard stop
+## 3. Approved decisions and G00 evidence dependencies
 
-Decisions in Section 1 are LOCKED. The entries below are **unresolved** and must receive an explicit recorded verdict before dependent implementation. Recommendations are proposals, not pre-approved designs.
+**Approved by product owner in conversation 2026-10-18:** DEC-01–DEC-11 and reviewed engineering resolutions. Approval includes this docs-only repository update; it is **not** code, service, license-change, production or release authorization. The final wire details are subject to external interface-owner review and tests.
 
-| ID / owner | Requires approval | PROPOSED default; reason / dependent phases |
+| ID | Owner-approved outcome | Gate evidence still required |
 |---|---|---|
-| DEC-01 / product + protocol | Live transport and Persistence API envelope, protocol major, endpoints, and compatible schema negotiation | Agent-initiated mTLS stream for Live and mTLS HTTP request/response with keep-alive for Persistence; specify exact transports only after contract review. Blocks P06–P09. |
-| DEC-02 / security + product | Initial enrollment, trust roots, cert issuance/rotation/revocation, re-enrollment and key storage | One stable `agent_id` in `server_info`; explicit per-server authorization and OS-protected identity material; enrollment token remains *proposal*. Blocks P06. |
-| DEC-03 / data + product | Freeze point, late-sample grace, corrections to finalized/ACKed periods, clock corrections | Immutable period after a bounded, documented grace; reject/quarantine late entries with health evidence; never silently mutate ACKed payload. Grace (e.g. 120 s) is **PROPOSED**, not locked. Blocks P04–P08. |
-| DEC-04 / product + ops | 60-day expiration of **unACKed** final rows, disk-full behavior | Never silently delete unACKed data; prefer retention exception + urgent observable alarm and explicit operator policy over invisible data loss. Define finite disk safety behavior. Blocks P05, P08, P10. |
-| DEC-05 / data/platform | Meaning of failover among endpoints with distinct backing persistence domains | Automatic Persistence failover only within a proven shared/deduplicated central domain, unless an explicit cross-domain replication/ACK contract exists. Live failover remains independent. Blocks P08–P09. |
-| DEC-06 / Go + platform | Maintained SQLite driver, `CGO_ENABLED=0` support across ARMv6/v7 and durable sync policy | Benchmark a maintained pure-Go driver versus alternatives; start with WAL + `synchronous=FULL` for durability evaluation, not an unmeasured commitment. Blocks P02. |
-| DEC-07 / product + Desktop owner | Whether current `version/snapshot/stream --json` must remain indefinitely, be opt-in or deprecate | Preserve CLI v1 output unchanged in initial migration; add daemon mode separately, deprecate only by explicit versioned policy. Blocks P01/P10. |
-| DEC-08 / product + QA | Quantitative cadence, CPU/RSS/disk, jitter, replay throughput SLOs and reference hardware | Define reproducible measurement harness, workloads and environment, then approve thresholds from observations rather than presenting guesses as guarantees. Blocks final P11 release gate. |
-| DEC-09 / security + legal | Apache-2.0 transition, provenance, license/NOTICE requirements and supply-chain signing model | Audit copyright and third-party notices; introduce verifiable signed artifacts before unattended updates. Blocks P10–P11. |
-| DEC-10 / platform + ops | SQLite corruption and host-restore identity policy; backup and rollback support | Fail closed/emit health on corruption, avoid overwriting valid state; same-host restore must preserve identity intentionally, cloned hosts must not share `agent_id`. Blocks P02/P10. |
-| DEC-11 / protocol + product | Meaning of `server_info` vs N registered Monitoring endpoints | `server_info` identifies one monitored host/agent; authorized N endpoints and their order live in one versioned config file, not separate application tables. Blocks P02/P06. |
+| DEC-01 | WSS persistent Live mTLS; HTTPS keep-alive Persistence mTLS; independent channels | Approve external wire/Hello/ACK fixtures |
+| DEC-02 | SSH initial install/enrollment, stable agent_id in SQLite, Agent-originated mTLS | Issuer, token/CSR, rotation/revocation contract |
+| DEC-03 | UTC 120-second minute grace, then immutable | Clock-step, late-data and restart tests |
+| DEC-04 | ACKed final 900s retention 60 days; unACKed protected until ACK | ENOSPC/61d/replay/health tests |
+| DEC-05 | Persistence HA only verified shared durable/dedup domain, Live independent | Domain proof and split-domain negative tests |
+| DEC-06 | CGO-free Pure Go SQLite WAL + synchronous=FULL, controlled writer | Driver benchmark/native ARM and crash durability |
+| DEC-07 | Daemon-only, **remove version/snapshot/stream --json** from new binary | Versioned legacy Desktop CLI consumer migration; core SSH unchanged |
+| DEC-08 | Peak RSS <=128MB; mean CPU <=5% of one core; jitter P99 <=500ms | Native reproducible test; disk and target >=2 final/s replay |
+| DEC-09 | Apache-2.0 intended after rights audit, NOTICE and signed release | Current MIT remains; legal/provenance/signature verification |
+| DEC-10 | Controlled corruption recovery, same-host ID retained, cloned host gets new ID | Restore/clone/registrar identity tests |
+| DEC-11 | server_info = single host/Agent; ordered N endpoints in one versioned JSON config | Atomic reload/N=1,3,10/ACL tests |
 
-**P00 completion rule:** no “TBD” contract is silently decided by code. Every unresolved choice has an ADR/owner approval, or an explicitly scoped implementation dependency remains BLOCKED. If one decision is still open, affected phases cannot begin.
+**Five canonical P00 documents now authored (design, not executable proof):**
+- [Product requirements and approved DEC outcomes](AGENT_PRODUCT_REQUIREMENTS.md)
+- [Architecture, lifecycle and failure policy](AGENT_ARCHITECTURE.md)
+- [Exactly three SQLite tables, DDL, transactions, retention](AGENT_SQLITE_SCHEMA.md)
+- [Config, mTLS, WSS/HTTPS, ACK, failover, threat model](AGENT_PROTOCOL_AND_SECURITY.md)
+- [P00-AC-01–20 and executable AC-001–055](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md)
+
+**Approved engineering design defaults:** non-root systemd, one monotonic 1Hz scheduler, one SQLite writer, two bounded independent network workers; initial Live queue 2 events dropping oldest with counted quality; JSON config with atomic reload; locally generated key with time-limited one-use enrollment token; initial backoff 1–60s and healthy failback dwell >=90s as tunable values; v2 daemon wire, immutable retry payload+SHA256, 60-day ACKed cleanup and 61-day unACKed preservation. Exact drivers, hardware numbers and external services are evidence-gated, not magically implemented by these documents.
+
+**Remaining G00 external agreements:** Bridge ingress/wire/subscriber behavior; Persistence verified durable PostgreSQL ACK, same-domain dedup including >30-day late arrivals and hourly/daily reaggregation; PKI issuer/revoke/clone; old Desktop v1 consumer migration; legal license review; QA/Native benchmark rigs. These are **evidence dependencies**, not reopened decisions. **G00 remains BLOCKED** until P00-AC-01–20 and cross-owner sign-off, with implementation authorization separate.
 
 ## 4. Work management rules
 
@@ -124,21 +133,21 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 | AG-0004 | Produce `docs/design/AGENT_PROTOCOL_AND_SECURITY.md` with N-endpoint config, channel-specific transport, identity/mTLS, authz, version negotiation, final envelope/ACK/error, failover domains, revocation and threat model. | **Test:** mock request/response examples checked against protocol invariants; unauthenticated or unauthorized ACK fails. **Accept:** security and external-contract owners agree. |
 | AG-0005 | Produce `docs/design/AGENT_ACCEPTANCE_AND_TEST_MATRIX.md` and incorporate this phased backlog as the **single** implementation plan (`docs/design/AGENT_IMPLEMENTATION_BACKLOG.md`); mark known unresolved decisions. | **Test:** every ticket maps to at least one acceptance ID below; negative-path acceptance cannot be “manual later.” **Accept:** owner approves scope and gates; no code is started automatically. |
 
-**Gate G00:** signed requirements + architecture + protocol + storage + acceptance contract, explicit DEC dispositions, baseline SHA captured. Deliverable-only changes are allowed by a separately authorized documentation task; implementation still requires separate authorization.
+**Gate G00:** five canonical docs, updated backlog and P00-AC-01–20 evidence explicitly reviewed by product/data/security/QA/external owners, baseline pinned and DEC outcomes recorded. **Current status: BLOCKED pending external sign-off/evidence; no implementation authorization.**
 
 ## P01 — Baseline correctness, CLI and testability (P0)
 
-**Outcome:** preserve working v0.1.0 collector while correcting evidence-backed defects. **Prereq:** G00 and DEC-07.
+**Outcome:** preserve audited collector semantics, but create **daemon-only v2** (legacy v0.1.0 CLI remains a separate migration artifact). **Prereq:** G00 and DEC-07.
 
 | Ticket | Deliverable / precise scope | Tests and acceptance |
 |---|---|---|
-| AG-0101 | Extract parsers/collectors from `main.go` into internal Go packages using injectable `/proc` fixtures; keep snapshot JSON shape stable. | Golden v1 JSON fixtures for `version/snapshot/stream` pass; existing command exit codes and stderr/stdout conventions do not change. |
+| AG-0101 | Extract Linux parsers/collectors from `main.go` with injectable `/proc` fixtures and versioned daemon metrics/quality structs. | Golden collector fixtures pass; new daemon has no requirement to emit legacy CLI JSON. |
 | AG-0102 | Correct Linux CPU tick delta accounting (guest duplication, zero/negative deltas, hotplug/reset) and confirm IOWait semantics. | Table-driven synthetic `/proc/stat` tests cover guest, wrap/reset and all-idle; output stays in valid 0–100% ranges, invalid epochs are flagged rather than fabricated. |
 | AG-0103 | Surface partial filesystem/network errors, mount/interface parsing problems, permission loss and counter semantics without treating zeros as valid missing readings. | Fixtures for corrupt `/proc/net/dev`, unreadable mounts, escaped mount paths and permission error; observable quality/error fields with versioned compatibility. |
-| AG-0104 | Add explicit process cancellation/signal handling with deterministic shutdown for stream/daemon paths; test leaks and JSON output integrity. | SIGTERM/SIGINT test leaves no partial JSON line or goroutine leak; no release of SSH session every second. |
-| AG-0105 | Reconcile README release/supported targets and introduce semver/protocol compatibility rules; preserve v1 CLI unless DEC-07 says otherwise. | Native amd64 CLI smoke; version/stream consumer contract golden tests; docs match tag v0.1.0 and packaging outputs. |
+| AG-0104 | Daemon-only signal cancellation, controlled writer drain/rollback and graceful shutdown; no public stream command. | SIGTERM/SIGINT cannot strand partial SQLite transaction, socket, goroutine or service process; no per-second SSH. |
+| AG-0105 | Reconcile v0.1.0 release docs, define daemon protocol-major 2 version/health/Hello, protect legacy v1 clients with an explicit migration gate. | Native daemon smoke, old client migration contract, no silent in-place CLI replacement. |
 
-**Gate G01:** AC-001–004 pass; baseline CLI consumers remain functional or owner-approved versioned migration exists.
+**Gate G01:** AC-001–004 pass; existing v1 CLI consumers protected by **versioned migration**, not by retaining public CLI in the new daemon.
 
 ## P02 — SQLite foundation, identity and schema migrations (P0)
 
@@ -163,9 +172,9 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 | AG-0301 | Implement one cancellable monotonic scheduler targeting ~1 Hz with UTC timestamps, stable per-sample ID, actual elapsed time and overrun policy. | Fake clock and slow-collector tests show no unbounded goroutine/timer spawn, no duplicate ID, and no invented samples during scheduling gaps. |
 | AG-0302 | Collect CPU, RAM, swap, load, mount-level space and interface counters/rates with explicit units, counter reset/wrap, hotplug and cardinality limits. | Linux fixture suite covers reset, wrap, mount/interface disappear/reappear, zero denominator, non-ASCII/escaped mounts, incomplete fields. |
 | AG-0303 | Commit one raw row per actual sample, including error/quality/coverage metadata, independent of any network status; control backpressure. | Offline ≥30 min with injected collector errors and network down: stored sample identity/time preserved, explicit missing spans, no memory growth from outbound queues. |
-| AG-0304 | Provide safe startup/shutdown, status and test clock injection; decide integration with legacy `snapshot` and `stream`. | 1-hour soak + SIGTERM + restart verifies monotonic scheduler, no duplicate raw IDs, CLI v1 contract unaffected. |
+| AG-0304 | Safe daemon startup/shutdown, status and test-clock injection; no old snapshot/stream public interface. | 1-hour soak + SIGTERM + restart verifies monotonic scheduler, no duplicate raw IDs, Desktop migration tracked independently. |
 
-**PROPOSED performance target, not approved SLO:** nominal 1s cadence, with quantile/jitter target and test host calibrated in P00. Missing samples are visible as `coverage` degradation, not silently filled.
+**APPROVED DEC-08 acceptance target:** nominal 1s cadence; schedule-start jitter P99 <=500ms; peak RSS <=128MB; mean CPU <=5% of one core on an explicitly documented reference workload. Benchmark calibration/native-platform qualification remains REQUIRED. Missing samples are visible as `coverage` degradation, never silently filled.
 
 **Gate G03:** AC-009–012 pass; 1-hour workload/partial-data evidence; no SSH reconnection per tick.
 
@@ -258,9 +267,9 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 
 | Ticket | Deliverable / precise scope | Tests and acceptance |
 |---|---|---|
-| AG-1001 | Add explicit long-running service CLI and safe install/uninstall/service supervision (systemd where available), logging, readiness/liveness, exit semantics, graceful draining and restart behavior. | systemd restart/stop/kill tests show no lost committed sample, no orphan goroutine/process, no privilege escalation or network listener unexpectedly exposed. |
+| AG-1001 | Daemon-only entrypoint and safe install/uninstall/systemd service, journald health, liveness and deterministic drain/restart. | systemd restart/stop/kill leaves no half-committed sample/orphan process/privilege escalation/public listener. |
 | AG-1002 | Least-privilege runtime user, controlled DB/config/cert paths, strict key permissions, refusal of unsafe config/cert ownership, log redaction and resource limits. | Non-root smoke; permission/owner attacks rejected; secrets never printed, world-writable key/config rejected. |
-| AG-1003 | Versioned upgrade/rollback plan for binaries, SQLite schema, cert rotation, stable identity and current SSH-installed package coexistence. | Update interrupted mid-flight and rollback test; unsupported downgrade blocks safely; existing CLI clients remain compatible per DEC-07. |
+| AG-1003 | Versioned daemon-v2 migration/upgrade/rollback for binaries, schema, certs and legacy SSH-installed v0.1.0 coexistence. | Unsupported downgrade blocks; no silent incompatible replacement for old Desktop CLI; existing SSH core unchanged. |
 | AG-1004 | Sign/check release provenance and artifact digests; update tar/deb/rpm for approved service layout, new deps and correct license/copyright/NOTICE. | Independently verify trusted signature and SHA, package metadata, install/upgrade/uninstall on native supported OS, no leftover service state after safe uninstall. |
 | AG-1005 | Expand CI to protocol, failpoint, race, security, packaging, signed release and **native** ARMv6/ARMv7/ARM64 qualification (lab or controlled emulation clearly labeled). | Cross-compiles all targets; native reference runs recorded separately; unsupported targets explicitly excluded/marked experimental before publish. |
 | AG-1006 | Complete docs: install, registration, recovery, trust/rotation, protocol versions, resource/sizing, runbook, licensing; preserve changelog of migration. | Fresh-user documentation drill from bare Linux VM to observed live + durable historical mock ACK, with no missing secret steps. |
@@ -281,83 +290,26 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 
 **Gate G11 — Release candidate acceptance:** all signed INV + AC criteria, mandatory CI and native matrix, approved quantitative SLOs, release audit, owner sign-off; **only then** tag/release under separately approved execution authority.
 
-## 5. Stable executable acceptance matrix
+## 5. Stable acceptance IDs — canonical test matrix
 
-Every item below is a mandatory **release-level** assertion, not just a design aspiration. File-specific automation, fixtures and run links belong in its implementing ticket. Labels **UT**=unit, **IT**=integration, **FT**=fault injection, **CT**=contract, **E2E**=end-to-end, **NT**=native/soak/performance, **SEC**=security.
+The **authoritative Given/When/Then acceptance text** is [AGENT_ACCEPTANCE_AND_TEST_MATRIX.md](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md). This backlog references its stable IDs, so duplicate changing test definitions are deliberately removed here. **AC-003, AC-004, AC-047** now reflect approved DEC-07 daemon-only; P00-AC-01–20 are the design gate.
 
-| AC ID | Required Given / When / Then and pass condition | Type / primary phase |
+| IDs | Phase | Coverage |
 |---|---|---|
-| AC-001 | Given baseline Linux fixtures, when parsers run, then valid CPU/memory/load/disk/net values and explicit partial errors are emitted, never silently replaced with valid zero. | UT P01 |
-| AC-002 | Given Linux guest ticks and counter reset, when CPU usage is derived, then guest is not double-counted; invalid deltas are quality-flagged; range remains physically valid. | UT P01 |
-| AC-003 | Given v1 consumer fixtures, when `version/snapshot/stream --json` run, then compatible JSON, stdout/stderr split and exit behavior are preserved. | CT P01 |
-| AC-004 | Given SIGTERM/SIGINT in stream mode, when cancelled, then process finishes promptly without resource leaks or truncated JSON. | IT P01 |
-| AC-005 | Given a fresh DB, when initialized, then the only logical Agent tables are `server_info`, `raw_samples`, `aggregates` with approved indexes/constraints. | IT P02 |
-| AC-006 | Given SQLite busy/crash/WAL checkpoint stress, when reopened, then integrity is OK and there is no partially committed logical operation. | FT P02 |
-| AC-007 | Given upgrade/failed migration/downgrade attempts, when schema version rules execute, then upgrade is atomic and unsafe binary/schema mismatch fails closed. | FT P02 |
-| AC-008 | Given restart/clone/restore, when identity loads, then intended identity is stable, host collision detected and secrets undisclosed. | IT/SEC P02 |
-| AC-009 | Given a healthy reference host and fake clock, when sampling runs, then nominal cadence is ~1 second with recorded actual elapsed time and no invented samples. | NT/UT P03 |
-| AC-010 | Given missing/partial reads, counter resets and mount/interface churn, when sampled, then error/coverage semantics are correct per metric and entity. | UT P03 |
-| AC-011 | Given absent networks/Bridge/API, when sampling continues, then raw rows persist independently with bounded memory and observable gaps. | IT/FT P03 |
-| AC-012 | Given a 1-hour run and restart, when resumed, then no duplicate raw IDs, runaway timers or per-second SSH reconnects occur. | NT P03 |
-| AC-013 | Given time xx:xx:00.000/59.999, when minute closes, then `[start,end)` window includes each valid raw ID exactly once. | UT P04 |
-| AC-014 | Given 40 observed samples/60 expected plus a short spike, when aggregated, then reported coverage is 40/60 and peak/max are retained; missing 20 are not invented. | UT P04 |
-| AC-015 | Given crash before/during minute transaction, when reopened, then both final minute and `saved` changes are all-or-none. | FT P04 |
-| AC-016 | Given retry after completed minute transaction, when rerun, then no duplicate minute record or mis-marked raw ID is created. | FT P04 |
-| AC-017 | Given saved and unsaved raw rows, when cleanup runs or crashes, then only saved rows are deleted. | FT P04 |
-| AC-018 | Given 15 completed/partially missing minutes, when 900s rollup runs, then coverage, count, weighted values, extrema, last and anomaly evidence remain mathematically correct. | UT P05 |
-| AC-019 | Given crash around 15m commit/cleanup, when retried, then one final record exists and no required minute is lost before commit. | FT P05 |
-| AC-020 | Given pending final records inserted out-of-order, when queried, then oldest unACKed 900s period is returned first. | IT P05 |
-| AC-021 | Given 61 virtual days including unACKed old data, when retention runs, then ACKed data follows approved expiry policy and unACKed data is never silently dropped. | FT P05 |
-| AC-022 | Given measured reference cardinality, when 60-day storage simulation runs, then DB/WAL sizing and cleanup comply with approved budget with documented assumptions. | NT P05 |
-| AC-023 | Given config with N=1/3/10, when loaded, then priority equals array index, no fixed two-server constraint, unsupported versions rejected. | UT P06 |
-| AC-024 | Given bad/untrusted/expired/revoked cert or wrong server name, when dialled, then no operational mTLS channel forms and there is no plaintext fallback. | SEC P06 |
-| AC-025 | Given authenticated but unauthorized Agent/channel, when Hello or send executes, then authorization is denied with typed non-secret diagnostic. | SEC/CT P06 |
-| AC-026 | Given certificate/key rotation during service life, when rotated, then new trusted identity reconnects and old revoked identity cannot transmit. | SEC/IT P06 |
-| AC-027 | Given incompatible major protocol and oversized payload, when negotiating, then fail closed/bounded with no unbounded allocation. | SEC/CT P06 |
-| AC-028 | Given a subscribed mock Bridge, when healthy 1s samples arrive, then subscribers receive ordered/schema-valid live envelopes; no historical DB read/write occurs. | CT/E2E P07 |
-| AC-029 | Given a permanently slow Bridge, when collection continues, then sample writes and rollups remain independent; live buffer stays bounded with explicit drops. | FT/NT P07 |
-| AC-030 | Given network disconnection and re-establishment, when stream reconnects, then fresh live data resumes without fabricated historical backfill or per-tick SSH. | IT P07 |
-| AC-031 | Given Persistence API down, when Live Bridge stays up, then live samples continue through Bridge without waiting for central ACK. | E2E P07 |
-| AC-032 | Given raw or minute payload to the Persistence mock, when submitted, then protocol rejects it; only finalized 900s records qualify. | CT P08 |
-| AC-033 | Given a 200 response without authenticated durable ACK, when handled, then `persisted_at` stays NULL. | FT/CT P08 |
-| AC-034 | Given valid durable ACK for the same agent/period/ID/hash/domain, when verified, then only the matching final row gets `persisted_at` exactly once. | IT/SEC P08 |
-| AC-035 | Given success at central commit but lost ACK, when resubmitted across restart, then exactly one central logical record exists. | FT/E2E P08 |
-| AC-036 | Given wrong hash, unknown agent or forged/domain-mismatched ACK, when received, then state never advances to persisted. | SEC/CT P08 |
-| AC-037 | Given throttling, timeout and out-of-order database rows, when replayed, then retries are bounded with jitter and oldest-first order preserved. | IT P08 |
-| AC-038 | Given 1/30/61 days offline, when running simulated recovery, then age/backlog/capacity warnings and non-silent loss policy work and collection continues. | FT/NT P08 |
-| AC-039 | Given N=3 mixed health/capabilities, when selecting per channel, then exactly one highest-priority eligible endpoint per channel is active. | IT P09 |
-| AC-040 | Given primary outage and recovery, when failover/failback occurs, then configured backoff and hysteresis prevent connection flapping. | FT P09 |
-| AC-041 | Given Live primary down but Persistence primary healthy (and reverse), when operating, then two channels may select different servers without interference. | E2E P09 |
-| AC-042 | Given shared-domain endpoints, when ACK disappears and failover occurs, then deduplication stays stable across both paths. | E2E P09 |
-| AC-043 | Given **independent** persistence domains, when a failover would imply false availability of Server A's data on B, then unsafe selection/ACK assumption is blocked and observable. | SEC/FT P09 |
-| AC-044 | Given endpoint revocation/reorder under load, when config reloads, then revoked authority is not reused and resources are bounded. | SEC/IT P09 |
-| AC-045 | Given systemd stop/restart/crash on disposable Linux, when restarted, then local SQLite remains valid, service enters healthy state and no orphan process stays. | NT/FT P10 |
-| AC-046 | Given non-root runtime with malicious file permissions, when opening config/cert/DB, then protected paths are enforced and no secret is logged. | SEC P10 |
-| AC-047 | Given interrupted upgrade/rollback and old CLI client, when migrating, then schema safety and approved v1 compatibility rules hold. | FT/CT P10 |
-| AC-048 | Given release artifacts, when checked independently, then signed provenance and checksums verify against trusted publisher; invalid signature fails. | SEC P10 |
-| AC-049 | Given build targets amd64/arm64/armv7/armv6, when CI completes, then compilation succeeds and native runtime results/unsupported caveats are reported separately. | NT P10 |
-| AC-050 | Given package install/upgrade/uninstall on supported OS, when operated as service, then files/identity/permissions behave as documented and no unsafe replacement occurs. | NT P10 |
-| AC-051 | Given a clean Linux VM and only public docs, when operator follows onboarding/recovery guide, then can collect data and connect to contract mocks without undocumented steps. | E2E P10 |
-| AC-052 | Given full crash/corrupt/disk-full/clock/ACK-loss fault suite, when replayed, then INV-01–10 remain true or an approved explicit degraded/error state is exposed. | FT P11 |
-| AC-053 | Given N=3 multi-host test rig, when both channels run with independent outages, then 1s Live and finalized 900s Persistence match their distinct approved APIs. | E2E P11 |
-| AC-054 | Given accelerated 60-day dataset and approved reference host, when stressed, then CPU/RSS/DB/WAL/jitter/recovery throughput meet owner-approved measured SLOs. | NT P11 |
-| AC-055 | Given candidate release, when architecture, QA, security, licensing and external-interface owners review evidence, then all P0/P1 release blockers close and sign-off is explicit. | Review P11 |
+| P00-AC-01–20 | P00 | Design/docs/external agreement sign-off |
+| AC-001–004 | P01 | Collector/daemon/legacy migration |
+| AC-005–008 | P02 | SQLite/identity/recovery |
+| AC-009–012 | P03 | 1Hz sampler |
+| AC-013–017 | P04 | 1m+saved atomicity |
+| AC-018–022 | P05 | 15m/60d/61d retention |
+| AC-023–027 | P06 | mTLS/config/authorization |
+| AC-028–031 | P07 | stateless live bridge |
+| AC-032–038 | P08 | durable ACK/replay |
+| AC-039–044 | P09 | N endpoint HA |
+| AC-045–051 | P10 | systemd/signed native packages/migration |
+| AC-052–055 | P11 | E2E/fault/performance/release |
 
-### Cross-cutting fault matrix / mandatory fixtures
-
-| Fault family | Mandatory injection | Preserved invariant / evidence |
-|---|---|---|
-| Transaction crash | Force stop before, mid, after minute and final DB transactions | No half-aggregation and no invalid `saved`; idempotent restart |
-| Abrupt power loss / WAL | Kill -9, filesystem interruption in disposable VM, checkpoint during write | DB integrity or explicit corruption alert; no false success |
-| Storage exhausted / corruption | ENOSPC, permission denied, corrupt DB, failed backup/restore | Safe degraded state, alert, no silent overwrite or clean-away |
-| Collection quality | Partial reads, counter wrap/reset, hotplug, 1000 interfaces/mounts | Bounded memory, explicit quality and cardinality limits |
-| Clock anomaly | NTP backward/forward, timezone/DST, delayed sampler | UTC boundary integrity, no duplicate period ID or invented data |
-| Transport | Stall, packet loss, high latency, reconnect, large messages | Bounded retry/queue/CPU, samples continue |
-| Identity/authz | Bad CA, hostname, SNI, cert expiry/revoke, removed ACL | Denied session and no unauthorized ACK |
-| Central ACK | Lost, late, forged, wrong ID/hash/domain, duplicate | `persisted_at` only for valid durable commit; dedup on replay |
-| Endpoint HA | N=3 down/up/flapping, server capability mismatch, domain split | Independent highest-priority eligible per channel; no split ACK claim |
-| Retention/backlog | 1/30/61+ days disconnected, restart during cleanup | Approved expiry and non-silent old pending behavior |
-| Rollout | Failed migration, incompatible downgrade, stolen key, host clone | Block unsafe launch, preserve identity/DB and diagnostics |
+Negative fixture inventory and explicit G00–G11 evidence/sign-off are maintained only in the canonical acceptance matrix.
 
 ## 6. Boundary contracts the Agent needs; external services remain out of scope
 
@@ -369,40 +321,9 @@ The following are **contract tests against mocks** in this repo. They are not pe
 | Persistence API | Authenticated + authorized `agent_id`, **900s final-only** ingestion, stable-ID idempotent durable PostgreSQL commit, ACK containing verifiable ID/hash/domain, typed errors and retryability |
 | Historical API | UI historical reads reflect durable central records; never bridge/Agent SQLite; late-arrival correction and central 30-day/1-year/long-term policies documented by their owner |
 | Monitoring registration/PKI | Trusted certificate authority, server identity, Agent enrollment/rotation/revocation, allowed endpoint/channel mappings; controlled restoration |
-| Desktop/SSH legacy | May continue v1 `version/snapshot/stream` consumption until an explicit migration plan; core SSH/vault implementation is not changed in this project |
+| Desktop/SSH legacy | Legacy v0.1.0 may continue for existing consumers pending explicit versioned migration. **New daemon removes public v1 CLI**, must never silently replace old consumers; core SSH/vault unchanged. |
 
-**Proposed wire example (illustrative only, not approved):**
-
-```json
-{
-  "message_type": "final_aggregate",
-  "protocol_major": 2,
-  "agent_id": "<stable-agent-id>",
-  "record_id": "<stable-agent-and-utc-period-derived-id>",
-  "period_start_utc": "2026-10-18T00:00:00Z",
-  "period_seconds": 900,
-  "schema_version": "<approved-schema>",
-  "final": true,
-  "coverage": { "observed_samples": 893, "expected_samples": 900 },
-  "payload_hash": "<canonical-payload-hash>",
-  "metrics": {}
-}
-```
-
-```json
-{
-  "message_type": "durable_ack",
-  "agent_id": "<stable-agent-id>",
-  "record_id": "<same-record-id>",
-  "period_seconds": 900,
-  "payload_hash": "<same-canonical-payload-hash>",
-  "persistence_domain_id": "<approved-domain>",
-  "durably_committed": true,
-  "committed_at_utc": "<server-commit-timestamp>"
-}
-```
-
-The envelope, sample count and expected count above are **examples**, not a claim that all metrics have 900 observations. Explicit contract approval is required before implementation. A positive envelope from a malicious/untrusted sender is never valid without authenticated and authorized transport/context.
+**Canonical v2 wire samples and durable ACK** are in [AGENT_PROTOCOL_AND_SECURITY.md](AGENT_PROTOCOL_AND_SECURITY.md). Do not duplicate illustrative JSON with conflicting hash and domain semantics in this implementation backlog. External endpoint owners must sign compatible fixtures.
 
 ## 7. CI, evidence and release-gate commands
 
@@ -423,7 +344,7 @@ Recommended evidence path convention (PROPOSED; avoid committing bulky test outp
 
 **Release candidate checklist (all required):**
 
-- [ ] P00 signed; DEC-01–11 resolved, or any unresolved non-release scope explicitly excluded by owner.
+- [ ] DEC-01–11 approved; P00-AC-01–20 and G00 external contract/QA evidence explicitly signed.
 - [ ] G01–G10 and AC-001–055 verified with linked evidence.
 - [ ] No unknown “partial success” for raw saved, minute final, 15m final or central durable ACK.
 - [ ] All advertised platforms native-tested; CPU, RSS, disk/WAL, jitter and catch-up thresholds approved and met.
@@ -431,7 +352,7 @@ Recommended evidence path convention (PROPOSED; avoid committing bulky test outp
 - [ ] No history through Bridge, no raw/minute to Persistence API, no PostgreSQL directly from Agent.
 - [ ] 60-day final history and 61-day pending/recovery policy proved without silent data loss.
 - [ ] Negative mTLS/authz, replay, clone and cert rotation cases pass.
-- [ ] Existing SSH-v1 CLI compatibility/migration evidence present; Desktop SSH remains untouched.
+- [ ] Daemon-v2 migration evidence protects legacy CLI v1 consumers; no incompatible silent replacement; Desktop SSH remains untouched.
 - [ ] Updated install/config/recovery docs, license/NOTICE and publisher-signature verification pass.
 - [ ] Product, architecture, data, security, QA, and external-contract owners explicitly approve.
 - [ ] No code/production mutation or release is inferred from approval of this backlog document alone.
