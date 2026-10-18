@@ -105,9 +105,14 @@ func (s *Sender) submit(ctx context.Context,server config.Server,p storage.Pendi
  body:=io.LimitReader(resp.Body,64*1024)
  var ack ACK
  if e=json.NewDecoder(body).Decode(&ack);e!=nil{return e}
- if !ack.Durable||ack.AgentID!=s.Store.AgentID()||ack.RecordID!=p.RecordID||ack.PayloadSHA256!=p.Hash||
- ack.PeriodStartMS!=p.PeriodStartMS||ack.PersistenceDomain!=server.PersistenceDomain||ack.SchemaVersion!=2 {
+ if e=validateACK(ack,p,s.Store.AgentID(),server.PersistenceDomain);e!=nil{return e}
+ return s.Store.Acknowledge(ctx,p.RecordID,p.Hash,time.Now().UTC())
+}
+
+func validateACK(ack ACK,p storage.Pending,agentID,domain string)error{
+ if !ack.Durable||ack.AgentID!=agentID||ack.RecordID!=p.RecordID||ack.PayloadSHA256!=p.Hash||
+ ack.PeriodStartMS!=p.PeriodStartMS||ack.PersistenceDomain!=domain||ack.SchemaVersion!=2 {
   return errors.New("invalid/unmatched durable ACK")
  }
- return s.Store.Acknowledge(ctx,p.RecordID,p.Hash,time.Now().UTC())
+ return nil
 }
