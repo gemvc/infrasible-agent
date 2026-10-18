@@ -1,6 +1,6 @@
 # Legacy v0.1.0 installation (not daemon-v2 instructions)
 
-These instructions describe the currently released **CLI-based v0.1.0** artifact. The new approved design is a separate **daemon-only service**, which has not been implemented or released. Protect existing SSH/CLI consumers with a versioned migration; see [P00 requirements](design/AGENT_PRODUCT_REQUIREMENTS.md) and [backlog](design/AGENT_IMPLEMENTATION_BACKLOG.md). The MIT-to-Apache-2.0 intention is legally conditional; current releases remain MIT.
+These instructions describe the currently released **CLI-based v0.1.0** artifact. The new approved design is a separate **daemon-only service**, which has not been implemented or released. There are no legacy users or deployed installations; no migration or compatibility gate is required. See [P00 requirements](design/AGENT_PRODUCT_REQUIREMENTS.md) and [backlog](design/AGENT_IMPLEMENTATION_BACKLOG.md). The MIT-to-Apache-2.0 intention is legally conditional; current releases remain MIT.
 
 # Linux builds and installation
 

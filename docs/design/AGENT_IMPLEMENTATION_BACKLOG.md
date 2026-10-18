@@ -1,6 +1,6 @@
 # Infrasible Monitoring Agent — Phased Implementation Backlog
 
-> **GREENFIELD OVERRIDE — owner decision (2026-10-18):** This product has **zero users, zero deployed installations and no production data**. Build the new Agent from a clean install. **No legacy v0.1.0 CLI consumer migration, side-by-side compatibility, backward-compatibility gate, data-import path or preservation of old binaries is required.** Existing source/release/docs are read-only reference material for useful collector logic and provenance, not a product compatibility obligation. Initial SQLite creation is fresh; retain schema version identification and fail-closed invalid-version detection, but **do not implement pre-launch database migration/upgrade/rollback machinery**. Preserve crash-safe restart of the new DB, same-host disaster recovery, mTLS identity/certificate rotation, fresh provisioning, source-quality tests, secure packaging and verified external API contracts. Normal future upgrades can be designed after first release. This owner decision supersedes any conflicting historical sentence or AC below; any obsolete migration-related AC/ticket is **NOT APPLICABLE**, not a release blocker.
+> **Greenfield scope:** New clean-install daemon; no legacy consumers, migrations or compatibility gates. Canonical decision: [Product Requirements](AGENT_PRODUCT_REQUIREMENTS.md), section 2.
 
 **Status:** FINAL OWNER-APPROVED PRODUCT/ENGINEERING ARCHITECTURE (DEC-01–11 + AD-01–03, 2026-10-18); G00 EVIDENCE / EXTERNAL SIGN-OFF PENDING; NOT AUTHORIZED FOR IMPLEMENTATION  
 **Scope:** standalone open-source Linux Agent and the *minimum* external boundary contracts needed to test it  
@@ -52,7 +52,7 @@ Files inspected on the pinned baseline:
 | Real file | Verified AS-IS | Change class |
 |---|---|---|
 | `main.go` | `cpuSample`, `cpuUsage`, `memoryFrom`, `loadFrom`, `interfacesFrom`, `filesystems`, `snapshot`; CLI `snapshot/stream` writes NDJSON to stdout | KEEP collector behavior; REFACTOR into testable modules |
-| `version.go` | v0.1.0; `version --json`; schema/protocol v1.0; capabilities `snapshot`, `stream` | KEEP, extend/version deliberately |
+| `version.go` | v0.1.0; `version --json`; schema/protocol v1.0; capabilities `snapshot`, `stream` | REPLACE public CLI contract with daemon version/Hello contract; reuse only suitable metadata logic |
 | `main_test.go`; `version_test.go` | Basic parser/contract tests; no persistence, crash, failover or mTLS tests | KEEP and ADD cases |
 | `go.mod` | Go 1.23, no third-party dependencies | REEVALUATE only justified SQLite/transport dependencies |
 | `docs/PROTOCOL.md` | Current stdout JSON/SSH-client v1 contract; counter rates calculated by client | KEEP as AS-IS record; introduce separately versioned network contract |
@@ -68,7 +68,7 @@ Source-inspection findings to reproduce in tests rather than assume fixed:
 - `filesystems` and `interfacesFrom` omit some read/parse/scanner failure signals; incomplete inventories may appear without explicit errors.
 - `stream` currently loops until process termination with no explicit graceful cancellation/flush lifecycle.
 - New aggregation needs counter **rates**, reset/wrap handling and missing/partial-sample semantics, not merely the current cumulative bytes.
-- The README's “not yet released” language is stale relative to GitHub Release v0.1.0.
+- Historical GitHub Release v0.1.0 exists, but is not a supported deployment or migration requirement for the new daemon.
 - Cross-compilation for ARM is not native runtime qualification; checksum alone is not artifact publisher authentication.
 
 ## 3. Approved decisions and G00 evidence dependencies
@@ -105,17 +105,17 @@ Source-inspection findings to reproduce in tests rather than assume fixed:
 ## 4. Work management rules
 
 **Ticket workflow:** `BACKLOG → READY → IN_PROGRESS → REVIEW → VERIFIED → DONE`, or `BLOCKED` with a linked decision.  
-**Priority:** P0 correctness, security, durability and gate blockers; P1 lifecycle, compatibility and observability; P2 optional improvements explicitly excluded from the release path.  
+**Priority:** P0 correctness, security, durability and gate blockers; P1 lifecycle, new-protocol integration and observability; P2 optional improvements explicitly excluded from the release path.  
 **Per-ticket Definition of Ready:** approved source-of-truth/contract; dependent IDs completed; real touched paths identified; negative tests specified; measurable result and rollback plan known.  
 **Per-ticket Definition of Done:** implementation/tests/updated docs in one reviewed PR, `go test ./...`, `go vet ./...`, `go test -race ./...` (or documented constrained-platform equivalent), relevant integration/failure tests, passing CI, no unjustified schema/service addition, and evidence linked in ticket. Local green does not override CI red.  
-**Evidence:** PR SHA and test command/run URL, fixtures used, test logs or metrics, before/after compatibility samples, security review where applicable. Manual tests require platform, image, steps, expected and observed output.  
+**Evidence:** PR SHA and test command/run URL, fixtures used, test logs or metrics, before/after new-contract fixtures, security review where applicable. Manual tests require platform, image, steps, expected and observed output.  
 **Parallelization:** P01 can proceed after applicable P00 approvals; P02/P03 contracts must precede changes to the data pipeline; P06 can overlap P03–P05 after security/interface approval; P07 and P08 can overlap only after P06 contracts; P09 follows both. P10 preparations may start earlier but must not release prior to P11.
 
 ### Phase dependency map
 
 ```text
 P00 product + architecture + boundary approvals
-  ├─> P01 baseline correctness & compatibility
+  ├─> P01 collector correctness & daemon foundation
   ├─> P02 fresh SQLite schema, identity and bootstrap
   │     └─> P03 1-second sampling & durable recording
   │            └─> P04 minute rollup
@@ -124,7 +124,7 @@ P00 product + architecture + boundary approvals
            ├─> P07 Live channel (also P03)
            └─> P08 Persistence/ACK/replay (also P05)
                   └─> P09 N-endpoint active–standby (also P07)
-P01–P09 ──> P10 lifecycle, packaging, security, compatibility
+P01–P09 ──> P10 lifecycle, packaging, security, clean install
 P00–P10 ──> P11 end-to-end qualification & release sign-off
 ```
 
@@ -380,7 +380,7 @@ Design / protocol reference: <approved canonical doc + version>
 Given / When / Then acceptance: <AC IDs plus precise expected values>
 Automated tests: <commands, fixtures, failure injections>
 Platform / manual evidence: <OS, arch, test rig, steps and artifacts>
-Rollback / compatibility: <strategy and old-client behavior>
+Recovery / safe failure: <new-daemon crash recovery, identity continuity and fresh-install behavior; no legacy-client compatibility requirement>
 Definition of Done: <CI link, tests, logs, review approvals, documentation>
 ```
 

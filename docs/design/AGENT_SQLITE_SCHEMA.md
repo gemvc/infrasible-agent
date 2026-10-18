@@ -1,6 +1,6 @@
 # Infrasible Monitoring Agent — SQLite Contract and Data Lifecycle
 
-> **GREENFIELD OVERRIDE — owner decision (2026-10-18):** This product has **zero users, zero deployed installations and no production data**. Build the new Agent from a clean install. **No legacy v0.1.0 CLI consumer migration, side-by-side compatibility, backward-compatibility gate, data-import path or preservation of old binaries is required.** Existing source/release/docs are read-only reference material for useful collector logic and provenance, not a product compatibility obligation. Initial SQLite creation is fresh; retain schema version identification and fail-closed invalid-version detection, but **do not implement pre-launch database migration/upgrade/rollback machinery**. Preserve crash-safe restart of the new DB, same-host disaster recovery, mTLS identity/certificate rotation, fresh provisioning, source-quality tests, secure packaging and verified external API contracts. Normal future upgrades can be designed after first release. This owner decision supersedes any conflicting historical sentence or AC below; any obsolete migration-related AC/ticket is **NOT APPLICABLE**, not a release blocker.
+> **Greenfield scope:** New clean-install daemon; no legacy consumers, migrations or compatibility gates. Canonical decision: [Product Requirements](AGENT_PRODUCT_REQUIREMENTS.md), section 2.
 
 **Status:** engineering-selected design baseline approved for documentation; SQL shown is a **reviewable DDL draft**, not an executed or migrated schema. **Source baseline:** current v0.1.0 has no SQLite. **Applies:** DEC-03/04/06/10/11, INV-01/02/03/04/07. See [Architecture](AGENT_ARCHITECTURE.md) and [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).
 
@@ -10,7 +10,7 @@
 
 One local SQLite database, exactly three logical **application** tables `server_info`, `raw_samples`, `aggregates`. No JSONL, Redis, broker, queue table or separate intermediate database. Internal SQLite structures such as `sqlite_sequence` do not constitute an Agent application table. One controlled writer, concurrent bounded readers, local filesystem, `WAL`, `synchronous=FULL`, explicit transactions and `PRAGMA user_version`. Pure Go driver selected after native target qualification; first benchmark candidate `modernc.org/sqlite`, alternative `ncruces/go-sqlite3` subject to measured CPU/RSS compatibility. No implied driver has passed tests yet.
 
-## 2. Three-table DDL (schema version candidate 2)
+## 2. Three-table DDL (fresh-install schema draft; initial version to be finalized)
 
 The canonical future implementation must retain these semantics even if constrained SQL types or column names change after review. Any such change requires an ADR and contract-test update.
 
@@ -18,7 +18,7 @@ The canonical future implementation must retain these semantics even if constrai
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = FULL;
--- PRAGMA user_version = 2; set as part of atomic initial schema creation on a fresh database.
+-- Set PRAGMA user_version to the approved integer in the atomic fresh bootstrap; version is not finalized by this draft.
 
 CREATE TABLE server_info (
     singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
