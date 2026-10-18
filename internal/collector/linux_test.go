@@ -1,10 +1,10 @@
 package collector
 
 import (
-	"math"
 	"errors"
-	"syscall"
+	"math"
 	"strings"
+	"syscall"
 	"testing"
 )
 
