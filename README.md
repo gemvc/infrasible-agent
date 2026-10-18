@@ -34,7 +34,7 @@ See [legacy protocol documentation](docs/PROTOCOL.md) for the **v0.1.0** JSON co
 
 ## Releases
 
-GitHub Actions checks tests and builds both architectures. A tag such as `v0.1.0` matching the version constant initiates a GitHub Release containing Linux executables and simple SHA-256 sidecars. A plain checksum **does not provide publisher authenticity**; cryptographic signing is planned before automatic network updates.
+GitHub Actions checks tests and builds both architectures. The CI checks pull requests and every merge/push to `main`. To publish a release, first merge the desired version in `version.go` into `main`, then manually run **Actions → Agent Release → Run workflow** on `main` and enter that exact `X.Y.Z` version. The release job checks that input matches `version.go`, runs tests/builds, creates the `vX.Y.Z` tag at the verified current `main` commit and publishes artifacts. A merge alone never publishes a release; tag pushes no longer trigger one. Historical v0.1.0 CLI smoke tests remain until the new daemon replaces the source. The workflow contains no explicit Node 20 setup; current GitHub Actions major versions are used. A plain checksum **does not provide publisher authenticity**; cryptographic signing is planned before automatic network updates.
 
 ## Approved target architecture (design only)
 
