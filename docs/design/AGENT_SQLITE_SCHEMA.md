@@ -1,5 +1,7 @@
 # Infrasible Monitoring Agent — SQLite Contract and Data Lifecycle
 
+> **GREENFIELD OVERRIDE — owner decision (2026-10-18):** This product has **zero users, zero deployed installations and no production data**. Build the new Agent from a clean install. **No legacy v0.1.0 CLI consumer migration, side-by-side compatibility, backward-compatibility gate, data-import path or preservation of old binaries is required.** Existing source/release/docs are read-only reference material for useful collector logic and provenance, not a product compatibility obligation. Initial SQLite creation is fresh; retain schema version identification and fail-closed invalid-version detection, but **do not implement pre-launch database migration/upgrade/rollback machinery**. Preserve crash-safe restart of the new DB, same-host disaster recovery, mTLS identity/certificate rotation, fresh provisioning, source-quality tests, secure packaging and verified external API contracts. Normal future upgrades can be designed after first release. This owner decision supersedes any conflicting historical sentence or AC below; any obsolete migration-related AC/ticket is **NOT APPLICABLE**, not a release blocker.
+
 **Status:** engineering-selected design baseline approved for documentation; SQL shown is a **reviewable DDL draft**, not an executed or migrated schema. **Source baseline:** current v0.1.0 has no SQLite. **Applies:** DEC-03/04/06/10/11, INV-01/02/03/04/07. See [Architecture](AGENT_ARCHITECTURE.md) and [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).
 
 ## 1. Constraints
@@ -16,7 +18,7 @@ The canonical future implementation must retain these semantics even if constrai
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = FULL;
--- PRAGMA user_version = 2; applied only after successful migration transaction.
+-- PRAGMA user_version = 2; set as part of atomic initial schema creation on a fresh database.
 
 CREATE TABLE server_info (
     singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
@@ -221,7 +223,7 @@ Storage pressure is inherently finite. Maintain metrics of DB/WAL bytes, free by
 
 **Integrity:** `PRAGMA integrity_check` on suspicion/restore; clean boot may use light checks, but corruption mandates fail closed and keep original for forensic copy. Never automatically delete/replace the valid identity. A consistent SQLite online backup or `VACUUM INTO` (with atomic staging/rename) is permitted for maintenance/controlled recovery; copying only main `.db` while WAL active is prohibited. Backup is **not** an independent queue or fourth logical table. Recovery requires operator authorization and evidence. Restore from same host keeps ID after central check; clone gets fresh ID/key/cert, with old credential invalidation handled by issuer.
 
-**Migration:** use `PRAGMA user_version`, bounded explicit transaction, pre-migration consistent backup, schema validation, and a versioned binary/schema compatibility table; reject unsupported schema and downgrade without touching data. Upgrade interrupted before commit reopens in known old/new state. Keep new binary isolated from legacy v0.1.0 data/CLI migration until Desktop consumer contract approves.
+**Greenfield bootstrap:** create the three application tables and indexes atomically on a fresh database, then set/check `PRAGMA user_version`. Reject unsupported, unexpected or partially initialized schema without modifying existing files. There is no v0.1.0 data/CLI migration, no pre-launch upgrade or downgrade implementation, and no migration backup requirement. Still require crash-safe normal writes, restart, integrity verification and authenticated same-host disaster recovery. Future released-version schema upgrades are a separate post-launch design task.
 
 **Durability caveat:** WAL + FULL is SQLite's chosen durability policy but assumes honest filesystem and flush semantics; test kill -9, fsync fault and disposable VM power interruptions. An integrity failure is an explicit critical state, not a silent reset.
 
