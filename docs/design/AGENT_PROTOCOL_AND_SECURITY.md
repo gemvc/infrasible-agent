@@ -1,6 +1,6 @@
 # Infrasible Monitoring Agent — Protocol, Registration and Security
 
-> **GREENFIELD OVERRIDE — owner decision (2026-10-18):** This product has **zero users, zero deployed installations and no production data**. Build the new Agent from a clean install. **No legacy v0.1.0 CLI consumer migration, side-by-side compatibility, backward-compatibility gate, data-import path or preservation of old binaries is required.** Existing source/release/docs are read-only reference material for useful collector logic and provenance, not a product compatibility obligation. Initial SQLite creation is fresh; retain schema version identification and fail-closed invalid-version detection, but **do not implement pre-launch database migration/upgrade/rollback machinery**. Preserve crash-safe restart of the new DB, same-host disaster recovery, mTLS identity/certificate rotation, fresh provisioning, source-quality tests, secure packaging and verified external API contracts. Normal future upgrades can be designed after first release. This owner decision supersedes any conflicting historical sentence or AC below; any obsolete migration-related AC/ticket is **NOT APPLICABLE**, not a release blocker.
+> **Greenfield scope:** New clean-install daemon; no legacy consumers, migrations or compatibility gates. Canonical decision: [Product Requirements](AGENT_PRODUCT_REQUIREMENTS.md), section 2.
 
 **Status:** architecture-owner-approved engineering baseline; **wire examples and central-side guarantees REQUIRE EXTERNAL INTERFACE OWNER SIGN-OFF** before G00 closes. Agent repo implements clients and mocks only; not production Bridge/API/PKI. **Related:** [Requirements](AGENT_PRODUCT_REQUIREMENTS.md), [Architecture](AGENT_ARCHITECTURE.md), [SQLite](AGENT_SQLITE_SCHEMA.md), [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).
 
@@ -272,6 +272,6 @@ Required mock assertions: 1Hz Live frame with correct 1s/5s/30s actual measureme
 
 **Unresolved external sign-offs (not product option votes):** Bridge ingress/outbound subscriber schema, Persistence ACK exact format and durable implementation, domain proof, central >30d late ingestion and dedup retention, PKI issuer/rotation/revocation/re-enrollment, new Desktop integration using only the new Agent protocol. Any promise absent from other service implementations remains BLOCKED and must not be declared complete by Agent-only tests.
 
-## 10. License/release compatibility
+## 10. License, provenance and release authenticity
 
 Current source and distributed v0.1.0 are MIT; Apache-2.0 is the **intended** future license after copyright/third-party rights audit and NOTICE work. Verify signed artifact provenance/identity (e.g. keyless Sigstore/Cosign or equivalent approved mechanism) before unattended installs. Signed checksums complement, not replace publisher authentication. No deployed users or old Desktop consumers exist, so no legacy binary coexistence or compatibility gate is required; deliver only a clean new-Agent installation. No code changes or automated deployment follow merely from this document.
