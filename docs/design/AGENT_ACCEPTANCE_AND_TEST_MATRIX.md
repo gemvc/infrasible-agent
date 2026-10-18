@@ -1,5 +1,7 @@
 # Infrasible Monitoring Agent — Acceptance and Test Matrix
 
+> **GREENFIELD OVERRIDE — owner decision (2026-10-18):** This product has **zero users, zero deployed installations and no production data**. Build the new Agent from a clean install. **No legacy v0.1.0 CLI consumer migration, side-by-side compatibility, backward-compatibility gate, data-import path or preservation of old binaries is required.** Existing source/release/docs are read-only reference material for useful collector logic and provenance, not a product compatibility obligation. Initial SQLite creation is fresh; retain schema version identification and fail-closed invalid-version detection, but **do not implement pre-launch database migration/upgrade/rollback machinery**. Preserve crash-safe restart of the new DB, same-host disaster recovery, mTLS identity/certificate rotation, fresh provisioning, source-quality tests, secure packaging and verified external API contracts. Normal future upgrades can be designed after first release. This owner decision supersedes any conflicting historical sentence or AC below; any obsolete migration-related AC/ticket is **NOT APPLICABLE**, not a release blocker.
+
 **Status:** source-grounded acceptance baseline approved for documentation; **NOT EXECUTED** for new architecture. Release requirements are not test results. Existing executable baseline covers only legacy v0.1.0 code/CI.
 **Owner decisions:** DEC-01–DEC-11 and final owner-approved refinements **AD-01 (multi-rate), AD-02 (quality/freshness), AD-03 (lean daemon/early health)** on 2026-10-18. **Repository reference:** `main@8b43c8a20d3a00fb030634c46d4677eaf52661ed`.
 **Source of truth for acceptance:** THIS file; `AGENT_IMPLEMENTATION_BACKLOG.md` is the single phased execution plan and refers to stable IDs here.
@@ -15,7 +17,7 @@
 |---|---|---|
 | P00-AC-01 | Given owner DEC-01–11 and AD-01–03, when checked across all canonical docs and backlog, then 1Hz frames with independent metric cadences/quality are consistent with all locked decisions, including unchanged 120s grace. | REV P00 |
 | P00-AC-02 | Given current baseline SHA and v0.1.0 code, when inventory is reviewed, then AS-IS is separated from all proposed daemon behavior. | REV P00 |
-| P00-AC-03 | Given DEC-07, when auditing P01/P10/AC criteria, then no new daemon v1 CLI preservation is required and a versioned Desktop migration gate exists. | CT P00 |
+| P00-AC-03 | Given zero users and clean installation, when auditing P01/P10, then legacy CLI and Desktop migration requirements are removed and only the new daemon contract is tested. | CT P00 |
 | P00-AC-04 | Given proposed DDL, when schema reviewed, then exactly three application tables exist and frame-level slots are distinguished from per-metric 1s/5s/30s opportunities stored within JSON, with enforceable transactional invariants. | SQL P00 |
 | P00-AC-05 | Given a crash before/mid/after 60s and 900s transactions, when state transitions are paper-walked, then saved/rollup/persisted predicates remain atomic and idempotent. | FT-REVIEW P00 |
 | P00-AC-06 | Given UTC 120s grace, clock rollback and mixed 1s/5s/30s metric schedules, when a full minute, partial minute and 15m are simulated, then immutable boundaries, schedule-phase quality and metric-specific denominators are exact; no cached value is fabricated as fresh. | UT-REVIEW P00 |
@@ -40,11 +42,11 @@
 |---|---|---|
 | AC-001 | Given baseline Linux fixtures, when parsers run, then valid CPU/memory/load/disk/net values and explicit partial errors are emitted, never silently replaced with valid zero. | UT P01 |
 | AC-002 | Given Linux guest ticks and counter reset, when CPU usage is derived, then guest is not double-counted; invalid deltas are quality-flagged; range remains physically valid. | UT P01 |
-| AC-003 | Given legacy v0.1.0 CLI consumer fixtures and proposed v2 daemon install, when Desktop migration compatibility is reviewed, then legacy binary is not silently replaced, migration gates and v2 version/health contract are explicit; new daemon has no public v1 stdout CLI. | CT P01/P10 |
+| AC-003 | Given a fresh Linux host and new Agent package, when started, then only the daemon and its version/health/Hello contract are required; legacy CLI fixtures or migration are not tested. | IT P01 |
 | AC-004 | Given SIGTERM/SIGINT of the new daemon, when shutdown runs, then in-flight SQLite transaction commits or rolls back, sockets cancel, process stops within agreed bound and no goroutine/orphan process remains. | IT P01/P10 |
 | AC-005 | Given a fresh DB, when initialized, then the only logical Agent tables are `server_info`, `raw_samples`, `aggregates` with approved indexes/constraints. | IT P02 |
 | AC-006 | Given SQLite busy/crash/WAL checkpoint stress, when reopened, then integrity is OK and there is no partially committed logical operation. | FT P02 |
-| AC-007 | Given upgrade/failed migration/downgrade attempts, when schema version rules execute, then upgrade is atomic and unsafe binary/schema mismatch fails closed. | FT P02 |
+| AC-007 | Given an empty DB path, interrupted initial bootstrap, or unknown incompatible schema version, when Agent starts, then creation is atomic or startup fails closed without corruption; no old-schema migration is attempted. | FT P02 |
 | AC-008 | Given restart/same-host restore/clone, when identity loads, then authorized host preserves stable ID; cloned host cannot reuse registration without a distinct Agent ID and central-side quarantine/approval; no secrets disclose. | IT/SEC P02/P06 |
 | AC-009 | Given one-hour deterministic clock and valid host, when one common 1Hz frame scheduler runs, then 3600 frames have genuine elapsed time while 1s CPU/Network/Memory/Disk-I/O, 5s Load (720) and 30s capacity (120) schedule their own **real** due measurements, and metadata only at startup/change; no invented measurements. | NT/UT P03 |
 | AC-010 | Given 1s/5s/30s due patterns, missing/error/stale/not_due/counter_reset/unsupported cases, counters >2^53 and mount/interface churn, when sampled/serialized, then original metric times, precision, per-entity quality, fresh-zero versus unknown and TTL age are preserved with no fake repeated raw metric. | UT P03 |
@@ -84,7 +86,7 @@
 | AC-044 | Given endpoint revocation/reorder under load, when config reloads, then revoked authority is not reused and resources are bounded. | SEC/IT P09 |
 | AC-045 | Given systemd stop/restart/crash on disposable Linux, when restarted, then local SQLite remains valid, service enters healthy state and no orphan process stays. | NT/FT P10 |
 | AC-046 | Given non-root runtime with malicious file permissions, when opening config/cert/DB, then protected paths are enforced and no secret is logged. | SEC P10 |
-| AC-047 | Given an old Desktop v1 CLI consumer and a daemon-v2 upgrade/rollback, when migration is attempted, then old binary remains usable until versioned consumer migration is approved; incompatible binary/schema replacement fails closed; Desktop SSH core is untouched. | FT/CT P10 |
+| AC-047 | Given clean installation and a new Desktop integration, when Agent starts and sends versioned Hello, then only the new contract is accepted and Desktop core SSH remains untouched; no legacy-client migration testing. | CT P10 |
 | AC-048 | Given release artifacts, when checked independently, then signed provenance and checksums verify against trusted publisher; invalid signature fails. | SEC P10 |
 | AC-049 | Given build targets amd64/arm64/armv7/armv6, when CI completes, then compilation succeeds and native runtime results/unsupported caveats are reported separately. | NT P10 |
 | AC-050 | Given package install/upgrade/uninstall on supported OS, when operated as service, then files/identity/permissions behave as documented and no unsafe replacement occurs. | NT P10 |
@@ -111,7 +113,7 @@
 | N=1/3/10 endpoint changes, failback flapping, domain split | one active per channel, correct array priority, Persistence domain safety |
 | Cert wrong CA/name/SNI, expired/revoked, valid-cert wrong ACL, stolen enrollment token | fail closed and secrets redacted |
 | Same-host restore vs cloned image | authorized identity preserved vs fresh independent enrollment |
-| Legacy Desktop CLI and new daemon binary | no silent incompatible replacement; migration gate and core SSH protection |
+| New Desktop integration and daemon | new protocol only, clean installation and unchanged Desktop core SSH |
 | Package upgrade/downgrade, unsigned/tampered artifact, ARM native | version/schema safe, trusted verification mandatory, platform qualification explicit |
 
 ## 4A. Mandatory multi-cadence and freshness fixture suite
@@ -134,7 +136,7 @@ The due/coverage fixtures above are **required acceptance**, not production test
 | Gate | Required proof and owners |
 |---|---|
 | G00 | Five canonical design docs + this single AC matrix + updated implementation backlog; product/architecture + SQLite/data + protocol/security + external-interface + QA sign-offs; P00-AC-01–20 PASS with links. Owner approval of design text alone is not the same as executable evidence. |
-| G01 | AC-001–004 with daemon-only collector extraction, signal handling and versioned Desktop v1 migration review |
+| G01 | AC-001–004 with daemon-only collector extraction, signal handling and clean-install contract checks |
 | G02 | AC-005–008 on 3-table schema, WAL/FULL, CGO-free qualifying drivers, corruption and clone |
 | G03 | AC-009–012 with one controlled 1Hz frame scheduler, deterministic 1s/5s/30s due cadences, typed status, first-slice health and one-hour soak |
 | G04 | AC-013–017 with UTC 120s grace, per-metric opportunity/quality-preserving 60s aggregate, atomic saved+minute and cleanup |
@@ -143,7 +145,7 @@ The due/coverage fixtures above are **required acceptance**, not production test
 | G07 | AC-028–031 with live-only Bridge mocked subscriber and blocked consumer |
 | G08 | AC-032–038 with durable central mock, hash/domain ACK and replay after loss |
 | G09 | AC-039–044 with independent N endpoint failover, shared vs split domain |
-| G10 | AC-045–051 with non-root systemd, signed package, rights audit, native architectures and migration |
+| G10 | AC-045–051 with non-root systemd, signed package, rights audit, native architectures and clean installation |
 | G11 | AC-052–055, all prior gates, external owner acceptance and signed product/security/QA release review |
 
 **Sign-off ledger:** P00 Product/architecture owner = approved choice/design and docs update on 2026-10-18; SQLite/data owner = PENDING DDL execution review; PKI/Live/Persistence/Historical/Transible consumer owners = PENDING external contracts; QA = PENDING executable evidence; legal = PENDING copyright clearance. Do not mark G00 PASS or begin P01 merely because documents were committed.
