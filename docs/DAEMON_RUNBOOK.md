@@ -1,43 +1,44 @@
-# Infrasible Agent v2 — daemon operator runbook
+# Infrasible Agent v0.2.0 — Operations
 
-This is an early functional implementation, **not a production acceptance certificate**. The central Bridge, Persistence, registration authority, authenticated deduplication-domain attestations, and Desktop UI are external and are not shipped in this repository. G00 and external API/security signoffs remain necessary before deployment.
+> Test and staging only. This is a local daemon/runbook, **not a certificate of central Bridge/Persistence interoperability**.
 
-## Prepare a disposable Linux machine
-
-Use a dedicated non-root `infrasible-agent` user. Install the native Linux binary via the tarball or generated .deb. Copy `packaging/infrasible-agent.service` to the systemd unit path if not already installed. Create `/etc/infrasible-agent/config.json` based on `packaging/config.example.json`, owned by root and readable by the daemon service account. Configure real registered mTLS endpoints and certificates only after external protocol confirmation. The daemon works locally with an empty `monitoring_servers` array for offline storage/aggregation validation.
+## Runtime
 
 ```sh
-sudo useradd --system --home-dir /var/lib/infrasible-agent --shell /usr/sbin/nologin infrasible-agent
-sudo install -d -m 0750 -o infrasible-agent -g infrasible-agent /var/lib/infrasible-agent
-sudo install -d -m 0750 /etc/infrasible-agent
-sudo install -m 0640 -o root -g infrasible-agent packaging/config.example.json /etc/infrasible-agent/config.json
-sudo systemctl daemon-reload
-sudo systemctl enable --now infrasible-agent
-sudo journalctl -u infrasible-agent -f
+sudo systemctl status infrasible-agent --no-pager
+sudo journalctl -u infrasible-agent -n 100 --no-pager
+sudo systemctl restart infrasible-agent
 ```
 
-Do not run this installer on production until its service user, certificate paths and interface contract are verified. The example is intentionally disconnected and cannot deliver history or Live.
+The systemd unit runs `/usr/bin/infrasible-agent run --config=/etc/infrasible-agent/config.json` under dedicated `infrasible-agent` credentials and stores data in `/var/lib/infrasible-agent/agent.db`. All network channels are outbound. The daemon continues collecting locally when `monitoring_servers` is empty. Network registration and PKI rotation are **not automated** in v0.2.0.
 
-## Local maintenance over existing authorized SSH
+## Operator commands (authorized local or existing SSH session)
 
 ```sh
-infrasible-agent config validate --config=/etc/infrasible-agent/config.json
-infrasible-agent health status --config=/etc/infrasible-agent/config.json
-infrasible-agent storage status --config=/etc/infrasible-agent/config.json
-infrasible-agent storage cleanup --dry-run --config=/etc/infrasible-agent/config.json
-infrasible-agent storage cleanup --safe --config=/etc/infrasible-agent/config.json
+sudo -u infrasible-agent infrasible-agent config validate --config=/etc/infrasible-agent/config.json
+sudo -u infrasible-agent infrasible-agent health status --config=/etc/infrasible-agent/config.json
+sudo -u infrasible-agent infrasible-agent storage status --config=/etc/infrasible-agent/config.json
+sudo -u infrasible-agent infrasible-agent storage cleanup --dry-run --config=/etc/infrasible-agent/config.json
+sudo -u infrasible-agent infrasible-agent storage cleanup --safe --config=/etc/infrasible-agent/config.json
 ```
 
-Access to the SQLite directory determines maintenance permissions. Never grant generic SQL execution to Desktop users. A dry run produces counts for a limited batch and estimates no guaranteed byte reclamation. Each execute batch rechecks protected-row conditions. Repeat explicitly if necessary.
+Status reports database, WAL and SHM bytes, filesystem capacity/free, raw saved and unsaved counts, minute and final counts, oldest Pending, eligible expired ACKed finals, SQLite free pages and late raw samples. `health status` reports SQLite readiness and last known local raw/aggregate/ACK times; **it explicitly cannot prove Live or Persistence connectivity from a separate CLI invocation**. Use centralized monitoring and logs for those channels.
 
-`raw_samples.saved=0` and unacknowledged 15-minute finals are always protected. ACKed finals older than 60 days from UTC period **end** are eligible. The database can hold pending history longer than 60 days and may fill; storage pressure is reported as a degradation, never silently resolved by deleting Pending.
+## Storage lifecycle and cleanup
 
-When troubleshooting, keep the main database and WAL together; do not copy just the main DB while SQLite is active. Never erase the DB on a failed migration/integrity check.
+- Unsaved raw frames remain protected, even when late or excluded from an already immutable aggregate.
+- Raw rows become `saved=1` only when an eligible minute summary is committed, and can then be cleaned up in bounded batches.
+- 60-second rows are eligible for cleanup only when their enclosing 900-second immutable final has been committed.
+- 900-second final rows are eligible only after a matching durable ACK **and** 60 days counted from UTC period end. Pending final records are protected indefinitely from ordinary cleanup, even under low disk conditions.
+- `--dry-run` estimates a **bounded batch (up to 500 rows per category)**, not total reclaimable disk bytes. `--safe` rechecks predicates in SQLite; deletions do not necessarily shrink DB/WAL immediately. SQLite page vacuum/checkpoint are best-effort, not synchronous guaranteed reclamation.
 
-## Operational limitations
+**Do not grant Desktop a general SQL execution interface, or let arbitrary shell input reach maintenance.** Require human authorization for destructive maintenance, and preserve audit information at the Desktop/operator layer. Running the command over the *existing* SSH connection does not require a separate management port or per-second SSH polling.
 
-- This initial release candidate does not enroll or rotate certificates automatically. Credentials must be provisioned by an authorized operator.
-- Persistence uses a single pinned server until a verifiable shared deduplication-domain attestation mechanism is approved; a matching string in config does not prove cross-server durability.
-- The proposed ACK JSON is not a released central API contract. Never interpret HTTP 200 alone as durable success.
-- Production resource/soak, power-loss and native ARM acceptance tests are not signed off.
-- User-facing Storage Dashboard, thresholds and confirmation UX are work in the separate Desktop repository.
+## Troubleshooting
+
+- If database initialization fails, inspect service-user ownership and `journalctl` before retrying. Do **not** remove the SQLite database to mask a schema/integrity error.
+- If history remains Pending, inspect mTLS credentials and registered central API/ACK semantics; an HTTP 200 alone is not durable proof.
+- Always back up SQLite consistently, accounting for WAL and SHM; copying only `agent.db` while the daemon is active can lose committed data.
+- Do not publish an unattended auto-updater or treat the unsigned checksum file as publisher authentication.
+
+See [Installation](INSTALLATION.md), [Configuration](CONFIGURATION.md) and the [acceptance matrix](design/AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).
