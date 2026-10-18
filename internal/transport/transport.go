@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"syscall"
 	"time"
 
 	"github.com/coder/websocket"
@@ -36,14 +37,28 @@ type ACK struct {
 }
 
 func tlsFor(s config.Server) (*tls.Config, error) {
-	// Never load private-key material through a symlink or a file readable
-	// by other users. Enrollment must provision the key for the daemon user.
-	keyInfo, e := os.Lstat(s.ClientKeyFile)
+	// Open once with O_NOFOLLOW so key identity and permission validation
+	// are tied to the same file descriptor used for reading the secret.
+	keyFile, e := os.OpenFile(s.ClientKeyFile, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if e != nil {
-		return nil, e
+		return nil, fmt.Errorf("open client private key: %w", e)
+	}
+	defer keyFile.Close()
+	keyInfo, e := keyFile.Stat()
+	if e != nil {
+		return nil, fmt.Errorf("stat client private key: %w", e)
 	}
 	if !keyInfo.Mode().IsRegular() || keyInfo.Mode().Perm()&0077 != 0 {
 		return nil, errors.New("client private key must be a regular file accessible only to its owner")
+	}
+	// Reject unexpectedly large secrets and avoid reopening the path after
+	// validating its mode (a classic pathname time-of-check/time-of-use race).
+	keyPEM, e := io.ReadAll(io.LimitReader(keyFile, 1<<20+1))
+	if e != nil {
+		return nil, fmt.Errorf("read client private key: %w", e)
+	}
+	if len(keyPEM) > 1<<20 {
+		return nil, errors.New("client private key exceeds 1 MiB")
 	}
 	pem, e := os.ReadFile(s.CAFile)
 	if e != nil {
@@ -53,7 +68,11 @@ func tlsFor(s config.Server) (*tls.Config, error) {
 	if !roots.AppendCertsFromPEM(pem) {
 		return nil, errors.New("invalid trusted CA")
 	}
-	pair, e := tls.LoadX509KeyPair(s.ClientCertFile, s.ClientKeyFile)
+	certPEM, e := os.ReadFile(s.ClientCertFile)
+	if e != nil {
+		return nil, e
+	}
+	pair, e := tls.X509KeyPair(certPEM, keyPEM)
 	if e != nil {
 		return nil, e
 	}
