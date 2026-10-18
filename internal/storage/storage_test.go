@@ -3,6 +3,8 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"os/exec"
 	"github.com/gemvc/infrasible-agent/internal/collector"
 	"path/filepath"
 	"testing"
@@ -265,5 +267,133 @@ func TestCadenceCoverageAndRestartReplay(t *testing.T) {
 	if final.Quality["load"]["expected_due"] != 180 || final.Quality["load"]["unobserved_due"] != 168 ||
 		final.Quality["filesystem"]["expected_due"] != 30 || final.Quality["filesystem"]["unobserved_due"] != 28 {
 		t.Fatalf("15-minute cadence coverage incorrect: %#v", final.Quality)
+	}
+}
+
+func TestInterruptedSQLiteTransactionIsRolledBack(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "crash.db")
+	if os.Getenv("INFRASIBLE_TEST_CRASH_CHILD") == "1" {
+		db, err := Open(pathFromCrashEnv())
+		if err != nil {
+			t.Fatal(err)
+		}
+		tx, err := db.db.BeginTx(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = tx.Exec("INSERT INTO raw_samples(sample_id, observed_at_ms, effective_at_ms, elapsed_ms, metrics_json, quality_json) VALUES(?,?,?,?,?,?)",
+			"uncommitted-crash-row", int64(1), int64(1), int64(0), "{}", "{}")
+		if err != nil {
+			t.Fatal(err)
+		}
+		// os.Exit simulates abrupt process death before COMMIT: neither
+		// deferred rollback nor db.Close is executed in the child.
+		os.Exit(0)
+	}
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := db.AgentID()
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestInterruptedSQLiteTransactionIsRolledBack$")
+	cmd.Env = append(os.Environ(), "INFRASIBLE_TEST_CRASH_CHILD=1", "INFRASIBLE_TEST_CRASH_DB="+path)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("child failed: %v: %s", err, output)
+	}
+	db, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if db.AgentID() != id {
+		t.Fatal("agent identity changed after abrupt process death")
+	}
+	if err := db.Integrity(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := db.db.QueryRow("SELECT COUNT(*) FROM raw_samples WHERE sample_id=?", "uncommitted-crash-row").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatal("uncommitted sample survived process crash")
+	}
+}
+
+func pathFromCrashEnv() string {
+	return os.Getenv("INFRASIBLE_TEST_CRASH_DB")
+}
+
+func TestMissingFramesAndInvalidValuesDoNotFabricateCoverage(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(filepath.Join(t.TempDir(), "missing.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	start := time.Date(2026, 10, 18, 0, 0, 0, 0, time.UTC)
+	observations := []struct {
+		second int
+		status string
+		value any
+	}{
+		{0, "valid", float64(0)},
+		{30, "error", nil},
+		{59, "valid", float64(90)},
+	}
+	for _, obs := range observations {
+		at := start.Add(time.Duration(obs.second) * time.Second).UnixMilli()
+		if err := db.Save(ctx, collector.Frame{
+			ObservedAtMS: at,
+			Metrics: map[string]collector.Observation{
+				"cpu": {Status: obs.status, MeasuredAtMS: at, Value: obs.value},
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Finalize(ctx, start.Add(4*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	var summaryJSON, qualityJSON string
+	if err := db.db.QueryRowContext(ctx,
+		"SELECT summary_json,quality_json FROM aggregates WHERE resolution_seconds=60 AND period_start_ms=?",
+		start.UnixMilli()).Scan(&summaryJSON, &qualityJSON); err != nil {
+		t.Fatal(err)
+	}
+	var stats map[string]Statistic
+	if err := json.Unmarshal([]byte(summaryJSON), &stats); err != nil {
+		t.Fatal(err)
+	}
+	var quality QualityCounts
+	if err := json.Unmarshal([]byte(qualityJSON), &quality); err != nil {
+		t.Fatal(err)
+	}
+	cpu := stats["cpu"]
+	if cpu.Count != 2 || cpu.Due != 3 || cpu.Failed != 1 || cpu.Min != 0 ||
+		cpu.Max != 90 || cpu.Sum != 90 || cpu.PeakAtMS != start.Add(59*time.Second).UnixMilli() {
+		t.Fatalf("incorrect partial minute: %+v", cpu)
+	}
+	if quality["cpu"]["expected_due"] != 60 || quality["cpu"]["unobserved_due"] != 57 ||
+		quality["cpu"]["error"] != 1 || quality["cpu"]["valid"] != 2 {
+		t.Fatalf("missing frames misclassified: %#v", quality["cpu"])
+	}
+	if err := db.Finalize(ctx, start.Add(18*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	pending, ok, err := db.OldestPending(ctx)
+	if err != nil || !ok {
+		t.Fatalf("final missing: %v", err)
+	}
+	var final Final
+	if err := json.Unmarshal(pending.Payload, &final); err != nil {
+		t.Fatal(err)
+	}
+	if final.ObservedSlots != 3 || final.Quality["cpu"]["expected_due"] != 900 ||
+		final.Quality["cpu"]["unobserved_due"] != 897 || final.Summary["cpu"].Count != 2 {
+		t.Fatalf("fabricated final coverage: %+v", final)
 	}
 }
