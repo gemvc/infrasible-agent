@@ -51,7 +51,7 @@ type Final struct {
 	ExpectedSlots     int64                `json:"expected_slots"`
 	ObservedSlots     int64                `json:"observed_slots"`
 	Summary           map[string]Statistic `json:"summary"`
-	Quality           QualityCounts         `json:"quality"`
+	Quality           QualityCounts        `json:"quality"`
 	PayloadSHA256     string               `json:"payload_sha256,omitempty"`
 }
 type Pending struct {
@@ -287,6 +287,7 @@ func flatten(summary map[string]Statistic, key string, v any, at int64) {
 		}
 	}
 }
+
 // QualityCounts preserves actual observation outcomes at their original family
 // names. An omitted (not-due) family is not a failed scheduled observation.
 type QualityCounts map[string]map[string]int64
