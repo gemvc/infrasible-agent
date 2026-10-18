@@ -180,8 +180,8 @@ func memoryFrom(s string) (map[string]uint64, error) {
 	if m["MemTotal"] == 0 {
 		return nil, errors.New("missing MemTotal")
 	}
-	avail := m["MemAvailable"]
-	if avail == 0 {
+	avail, hasAvailable := m["MemAvailable"]
+	if !hasAvailable {
 		avail = m["MemFree"] + m["Buffers"] + m["Cached"]
 	}
 	swap := uint64(0)
