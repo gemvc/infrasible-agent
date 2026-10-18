@@ -1,6 +1,6 @@
 # Infrasible Monitoring Agent — Phased Implementation Backlog
 
-**Status:** OWNER-APPROVED DEC-01–11 AND ENGINEERING DESIGN (2026-10-18); G00 EVIDENCE / EXTERNAL SIGN-OFF PENDING; NOT AUTHORIZED FOR IMPLEMENTATION  
+**Status:** FINAL OWNER-APPROVED PRODUCT/ENGINEERING ARCHITECTURE (DEC-01–11 + AD-01–03, 2026-10-18); G00 EVIDENCE / EXTERNAL SIGN-OFF PENDING; NOT AUTHORIZED FOR IMPLEMENTATION  
 **Scope:** standalone open-source Linux Agent and the *minimum* external boundary contracts needed to test it  
 **Repository:** https://github.com/gemvc/infrasible-agent  
 **Baseline:** implementation `2f93988bf37243d7a7d57d1a4d4172bec1b8302c`; approved-doc source audit `main@8b43c8a20d3a00fb030634c46d4677eaf52661ed` (2026-10-18)  
@@ -12,11 +12,11 @@
 
 ## 1. Product destination and non-negotiable architecture
 
-The Agent runs **on each monitored Linux host**, samples host metrics approximately once per second, stores monitoring state in a **single SQLite database with exactly three logical tables**, and performs UTC 1-minute then UTC 15-minute rollups. ACKed final 15-minute aggregates are locally retained 60 days from period end; **unACKed** finals survive past 60 days until valid ACK even if storage eventually degrades visibly. The Agent initiates outbound connections; there is no periodic reopening of SSH to collect live samples.
+The Agent runs **on each monitored Linux host**, commits one actual **1Hz raw frame** while collecting metric families at **independent 1s/5s/30s or startup/change intervals**, stores genuine metric observations/status/timestamps in a **single SQLite database with exactly three logical tables**, and performs UTC 1-minute then UTC 15-minute rollups. ACKed final 15-minute aggregates are locally retained 60 days from period end; **unACKed** finals survive past 60 days until valid ACK even if storage eventually degrades visibly. The Agent initiates outbound connections; there is no periodic reopening of SSH to collect live samples.
 
 Two logically independent outbound channels exist:
 
-- **Live:** 1-second raw samples over an authenticated, encrypted persistent connection to a **stateless Live Bridge**. The Bridge relays to subscribed Desktop Live UIs, does not persist history, and does not serve historical reads. Live delivery cannot block collection or durable storage.
+- **Live:** 1Hz raw **frames containing only actually due/new measurements** (with optional clearly labeled old display cache) over an authenticated encrypted persistent connection to a **stateless Live Bridge**. The Bridge relays to subscribed Desktop Live UIs, does not persist history, and does not serve historical reads. Live delivery cannot block collection or durable storage.
 - **Persistence:** *finalized 15-minute aggregates only* to a separate Persistence API. After a durable, idempotent PostgreSQL commit is certified by the API's ACK, the corresponding Agent row receives `persisted_at`. TCP delivery, an HTTP receipt, or a Live ACK does **not** count as durable persistence.
 
 The historical UI obtains data exclusively through the central PostgreSQL-backed Historical API. The Agent never writes directly to PostgreSQL. An ordered array of **N** registered Monitoring endpoints defines priority by array index, with **independent** selection and recovery per channel. All outbound communication is Agent-initiated; authenticated and authorized mTLS transport is required at the approved protocol boundary.
@@ -31,10 +31,13 @@ The historical UI obtains data exclusively through the central PostgreSQL-backed
 | INV-04 | `persisted_at` applies to final 15-minute records only and is set **only after an authenticated durable database ACK**. ACK loss or retry cannot produce duplicate logical central records. |
 | INV-05 | Live and Persistence have independent state, retry, resource budgets, server selection, and backpressure. Failure of one never blocks the other, sampling, or SQLite writes. |
 | INV-06 | The Live Bridge has no monitoring history store or historical query responsibility; historical UI reads only via Historical API. |
-| INV-07 | UTC period windows use `[start,end)` and exact 60s / 900s intervals; coverage, sample counts, max/min/last and peak/anomaly evidence survive rollups. |
+| INV-07 | UTC windows use `[start,end)`, 60s/900s, and preserve **per-metric cadence, scheduled opportunities, actual valid/error/missing counts, original measured times, freshness, measured extrema/peaks and quality** through rollups; frame-level 60/900 counts do not replace slow-metric 12/2 counts per minute. |
 | INV-08 | Endpoint priority is the **order of the N-element array**; at most one active endpoint **per channel**; no two-server limit or parallel duplicate active delivery. |
 | INV-09 | Authenticated TLS is **not** sufficient by itself: the target must separately authorize this Agent and the requested channel. Invalid identity/cert/permissions fail closed. |
 | INV-10 | Preserve audited collector correctness, but **the new public Agent is daemon-only and removes v1 version/snapshot/stream --json CLI**. Block silent incompatible replacement of legacy Desktop consumers; proprietary SSH/credentials remain out of scope. |
+| INV-11 | **Owner-approved AD-01:** one nominal 1Hz raw frame; CPU/Network/Memory/Swap/Disk-I/O measurements 1s, Load 5s, Filesystem capacity 30s, host metadata startup/change. `not_due` is never a missing due observation and cached old values never create fresh samples. |
+| INV-12 | **Owner-approved AD-02:** `valid` zero, `missing`, `error`, `counter_reset`, `unsupported`, `not_due`, and derived `stale` have distinct semantics; originals and age/TTL remain in Live and per-metric data-quality/coverage in 1m/15m. |
+| INV-13 | **Owner-approved AD-03:** lean single non-root Go daemon; built-in bounded collectors and workers, health from first vertical slice; no generic plugins/AI/embedded UI, inbound public REST API, separate queue store or automatic host mutation. |
 
 ### Central retention boundary (NOT to be implemented here)
 
@@ -91,7 +94,9 @@ Source-inspection findings to reproduce in tests rather than assume fixed:
 - [Config, mTLS, WSS/HTTPS, ACK, failover, threat model](AGENT_PROTOCOL_AND_SECURITY.md)
 - [P00-AC-01–20 and executable AC-001–055](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md)
 
-**Approved engineering design defaults:** non-root systemd, one monotonic 1Hz scheduler, one SQLite writer, two bounded independent network workers; initial Live queue 2 events dropping oldest with counted quality; JSON config with atomic reload; locally generated key with time-limited one-use enrollment token; initial backoff 1–60s and healthy failback dwell >=90s as tunable values; v2 daemon wire, immutable retry payload+SHA256, 60-day ACKed cleanup and 61-day unACKed preservation. Exact drivers, hardware numbers and external services are evidence-gated, not magically implemented by these documents.
+**Approved engineering design defaults:** non-root systemd, one monotonic 1Hz frame scheduler with genuine due measurements (1s CPU/Network/Memory/Swap/Disk-I/O, 5s Load, 30s filesystem space, startup/change metadata), first-class per-metric quality/freshness, one SQLite writer, two bounded independent network workers; initial Live queue 2 events dropping oldest with counted quality; JSON config with atomic reload; locally generated key with time-limited one-use enrollment token; initial backoff 1–60s and healthy failback dwell >=90s as tunable values; v2 daemon wire, immutable retry payload+SHA256, 60-day ACKed cleanup and 61-day unACKed preservation. Exact drivers, hardware numbers and external services are evidence-gated, not magically implemented by these documents.
+
+**Final owner-approved metric refinement AD-01–03 (2026-10-18):** one 1Hz raw frame, metric schedules 1s CPU/Network/Memory/Swap/Disk I/O, 5s Load, 30s filesystem capacity, metadata on startup/change; `valid/missing/error/counter_reset/not_due/stale/unsupported` distinct, original timestamps and age/TTL on Live, per-metric coverage/peaks retained through 1m/15m. One small non-root Go daemon with bounded modules and health from first vertical slice. This is **approved design**, not implementation or G00 test execution.
 
 **Remaining G00 external agreements:** Bridge ingress/wire/subscriber behavior; Persistence verified durable PostgreSQL ACK, same-domain dedup including >30-day late arrivals and hourly/daily reaggregation; PKI issuer/revoke/clone; old Desktop v1 consumer migration; legal license review; QA/Native benchmark rigs. These are **evidence dependencies**, not reopened decisions. **G00 remains BLOCKED** until P00-AC-01–20 and cross-owner sign-off, with implementation authorization separate.
 
@@ -123,15 +128,15 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 
 ## P00 — Architecture, contracts and acceptance baseline (P0)
 
-**Outcome:** implementation-ready agreements without any Agent runtime changes. **Prerequisites:** pinned repository baseline.
+**Outcome:** owner-approved final architecture, including multi-rate sampling, truthful age/quality and lean vertical delivery, translated into implementation-ready agreements **without runtime changes**. **Prerequisites:** pinned repository baseline.
 
 | Ticket | Deliverable / precise scope | Verification and acceptance |
 |---|---|---|
-| AG-0001 | Produce `docs/design/AGENT_PRODUCT_REQUIREMENTS.md` with personas, live/history journeys, non-goals, source-grounded AS-IS vs TO-BE, NFRs and locked invariants. | **Test:** requirement review maps all INV IDs and RTF locked rules 1:1, no contradicting statements. **Accept:** owner approves documented requirements. |
-| AG-0002 | Produce `docs/design/AGENT_ARCHITECTURE.md` with component and trust-boundary diagrams, independent channels, CPU/memory/disk/network semantics, UTC lifecycle/state machines, crash invariants and failure matrix. | **Test:** architecture walkthrough of restart, clock jump, disconnected endpoint and overflow; each has deterministic recovery behavior. **Accept:** P02–P09 have no implicit architectural assumption. |
-| AG-0003 | Produce `docs/design/AGENT_SQLITE_SCHEMA.md` with DDL for exactly 3 tables, indexes, `PRAGMA user_version` migration plan, transactions and cleanup queries, capacity formula and 60-day policy. | **Test:** paper/SQL review validates unique UTC period IDs, atomic `saved`/rollup behavior and `persisted_at` invariants. **Accept:** data owner signs off. |
-| AG-0004 | Produce `docs/design/AGENT_PROTOCOL_AND_SECURITY.md` with N-endpoint config, channel-specific transport, identity/mTLS, authz, version negotiation, final envelope/ACK/error, failover domains, revocation and threat model. | **Test:** mock request/response examples checked against protocol invariants; unauthenticated or unauthorized ACK fails. **Accept:** security and external-contract owners agree. |
-| AG-0005 | Produce `docs/design/AGENT_ACCEPTANCE_AND_TEST_MATRIX.md` and incorporate this phased backlog as the **single** implementation plan (`docs/design/AGENT_IMPLEMENTATION_BACKLOG.md`); mark known unresolved decisions. | **Test:** every ticket maps to at least one acceptance ID below; negative-path acceptance cannot be “manual later.” **Accept:** owner approves scope and gates; no code is started automatically. |
+| AG-0001 | Maintain `AGENT_PRODUCT_REQUIREMENTS.md` with owner DEC-01–11, AD-01–03, 1Hz frames/1s-5s-30s metric cadences, freshness/status vocabulary, non-goals, SLOs and locked invariants. | **Test:** every locked rule and per-metric due/quality case maps 1:1 with no contradiction; owner-approved documentation and cross-owner evidence distinguished. |
+| AG-0002 | Maintain `AGENT_ARCHITECTURE.md` with one scheduler, due-metric selection and bounded collectors, optional age-labeled Live cache, quality-first health, independent network channels, UTC rollup and fault states. | **Test:** deterministic walkthrough of 1s/5s/30s due, stale/zero/missing, crash/clock/network/overflow and early vertical slice; no implicit decision. |
+| AG-0003 | Maintain `AGENT_SQLITE_SCHEMA.md` with three-table DDL, frame-level versus per-metric expected-opportunity JSON, stable real measurement timestamps, 1m/15m weighted sufficient statistics, WAL/FULL, retention and migration. | **Test:** DDL and mock review validates 40/60 CPU, 8/12 Load, 2/2 capacity, no stale inflation, transaction/ACK invariants; data owner signs off. |
+| AG-0004 | Maintain `AGENT_PROTOCOL_AND_SECURITY.md` with live frame measured-at/age/quality/metadata and final metric-specific coverage, in addition to N-endpoint config, mTLS, authorized durable ACK and failover. | **Test:** 1Hz fresh frames distinguish old Live display and not_due; central 900s mock preserves exact metric-specific history/ACK; security and external owners approve. |
+| AG-0005 | Maintain `AGENT_ACCEPTANCE_AND_TEST_MATRIX.md` as canonical P00-AC-01–20/AC-001–055, with independent 1s/5s/30s, status/freshness/early-health negative-path fixtures; keep this as single phased backlog. | **Test:** all 57 tickets, 55 executable AC and 20 design AC trace without duplicate implementation plan; owner approves design, G00 still evidence-gated. |
 
 **Gate G00:** five canonical docs, updated backlog and P00-AC-01–20 evidence explicitly reviewed by product/data/security/QA/external owners, baseline pinned and DEC outcomes recorded. **Current status: BLOCKED pending external sign-off/evidence; no implementation authorization.**
 
@@ -163,16 +168,16 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 
 **Gate G02:** AC-005–008 pass; DB invariants validated under forced crash, filesystem lock and migration failure.
 
-## P03 — Continuous 1-second sampling and durable raw rows (P0)
+## P03 — Continuous 1Hz frames and independent metric sampling (P0)
 
-**Outcome:** long-running Linux sampler works without Desktop SSH polling. **Prereq:** G01, G02, DEC-03, initial metrics contract.
+**Outcome:** one reliable 1Hz raw frame stream with independent 1s/5s/30s metric schedules, original measured times, truthful quality/freshness and first-slice health; no Desktop SSH polling. **Prereq:** G01, G02, DEC-03, AD-01–03.
 
 | Ticket | Deliverable / precise scope | Tests and acceptance |
 |---|---|---|
-| AG-0301 | Implement one cancellable monotonic scheduler targeting ~1 Hz with UTC timestamps, stable per-sample ID, actual elapsed time and overrun policy. | Fake clock and slow-collector tests show no unbounded goroutine/timer spawn, no duplicate ID, and no invented samples during scheduling gaps. |
-| AG-0302 | Collect CPU, RAM, swap, load, mount-level space and interface counters/rates with explicit units, counter reset/wrap, hotplug and cardinality limits. | Linux fixture suite covers reset, wrap, mount/interface disappear/reappear, zero denominator, non-ASCII/escaped mounts, incomplete fields. |
-| AG-0303 | Commit one raw row per actual sample, including error/quality/coverage metadata, independent of any network status; control backpressure. | Offline ≥30 min with injected collector errors and network down: stored sample identity/time preserved, explicit missing spans, no memory growth from outbound queues. |
-| AG-0304 | Safe daemon startup/shutdown, status and test-clock injection; no old snapshot/stream public interface. | 1-hour soak + SIGTERM + restart verifies monotonic scheduler, no duplicate raw IDs, Desktop migration tracked independently. |
+| AG-0301 | Implement one cancellable monotonic **1Hz frame scheduler** with versioned due-profile/phase for 1s/5s/30s collectors, real frame and measurement times, stable IDs, bounded execution and overrun policy. | Deterministic one-hour clock yields 3600 frames, Load 720 due, capacity 120 due; no fake measurements/goroutine runaway, missed frames explicit. |
+| AG-0302 | Build small Go modules for CPU/Network/Memory/Swap/Disk-I/O 1s, Load 5s, filesystem space 30s, metadata startup/change; each has original measured_at, unit, entity, due/error/reset/unsupported and freshness TTL semantics. | Linux fixtures cover independent due schedules, measured zero versus error/null, counter reset, mount churn, old cache, 2x cadence+jitter TTL and no general plugin engine. |
+| AG-0303 | Persist one SQLite row **per actual one-second frame**, recording *only* genuine due readings or due failures, profile version and typed quality; keep old-value Live display cache in bounded RAM only. | Offline ≥30 min plus 5s/30s not_due frames: no cloned old readings in raw, no stale/zero confusion, no unbounded buffers and explicit gaps. |
+| AG-0304 | Safe daemon startup/shutdown, structured health from first slice (per-metric last-good/due/error/age, Storage, channels), deterministic fake-clock injection; no legacy public stream. | 1h soak/restart preserves actual measurement times and profile, reports stale when TTL elapses, no duplicate frames or misleading all-healthy flag. |
 
 **APPROVED DEC-08 acceptance target:** nominal 1s cadence; schedule-start jitter P99 <=500ms; peak RSS <=128MB; mean CPU <=5% of one core on an explicitly documented reference workload. Benchmark calibration/native-platform qualification remains REQUIRED. Missing samples are visible as `coverage` degradation, never silently filled.
 
@@ -185,7 +190,7 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 | Ticket | Deliverable / precise scope | Tests and acceptance |
 |---|---|---|
 | AG-0401 | Define aligned `[UTC_minute, UTC_minute+60s)` source queries; close-window/grace and late-sample behavior. | Boundary tests at xx:xx:00.000 and xx:xx:59.999; DST/timezone and NTP clock-step tests; exact source IDs stable. |
-| AG-0402 | Compute per-metric `sample_count`, expected/observed coverage, elapsed-time weighted average where applicable, min/max/last, peak value/time, anomaly summary and per-entity inventory quality. | Golden fixtures with a brief spike show preserved max/peak; 20 missing seconds yield reported 40/60 coverage, not a synthetic 60 samples. |
+| AG-0402 | Compute **per-metric scheduled/attempted/valid/missing** denominators (not global frame count), measured_at, bounded weighted-gauge statistics, actual extrema/peak, freshness/TTL and per-entity quality; no stale cache inflation. | Fixtures show CPU 40/60 spike, Load 8/12 and Capacity 2/2, with not_due frames excluded from misses, and no unseen capacity spike claim. |
 | AG-0403 | In **one SQLite transaction** upsert/finalize minute row and set `saved=true` only on its exact source raw IDs; ensure idempotency and retry after crash. | Failpoint **before, during and after commit**; restart yields one minute aggregate and all-or-none saved flags. No sample is marked saved without durable minute. |
 | AG-0404 | Delete **only** already-saved raw rows in bounded batches; permit cleanup to resume across shutdown and busy errors. | Verify unsaved row survives expired staging age, crash during DELETE, disk pressure and concurrent reader; data loss count = 0 for unsaved records. |
 
@@ -197,7 +202,7 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 
 | Ticket | Deliverable / precise scope | Tests and acceptance |
 |---|---|---|
-| AG-0501 | Aggregate 15 finalized minute windows into `[quarter_hour, quarter_hour+900s)` with semantically correct weighted stats, extrema/peak timestamps, anomaly union and partial coverage. | Simulate a 1-second peak within sparse minute windows; final max is retained and weighted average respects actual observations. |
+| AG-0501 | Build immutable 900s aggregate of **metric-specific** 1s/5s/30s opportunity counts, valid durations, actual extrema/peak timestamps, errors/age/anomalies and per-entity coverage. | Expected healthy quarter due opportunities 900/180/30, actual measured CPU peak survives; stale cache never multiplies into history. |
 | AG-0502 | Transactionally create a stable **immutable** 900s record, with deterministic record ID/lineage, and clean minute rows **only after** durable finalization. | Crash at each transaction boundary; retry produces one identical 15m record; no minute row disappears before a committed final record. |
 | AG-0503 | Define indexes and pending queue view logically as `resolution=900 AND persisted_at IS NULL`, oldest first. **No extra queue DB/table.** | Insert out-of-order, partially complete and many pending periods; indexed query returns stable oldest-first IDs on restart. |
 | AG-0504 | Enforce approved 60-day policy for finalized rows, distinguished by ACK state, observability for old pending rows, batch maintenance, WAL checkpoint and capacity planning. | Simulate ≥61 days in test clock; ACKed expiry follows policy; unACKed records never disappear silently; disk pressure raises explicit health signal. |
@@ -226,7 +231,7 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 
 | Ticket | Deliverable / precise scope | Tests and acceptance |
 |---|---|---|
-| AG-0701 | Define Live sample envelope: IDs, UTC, actual interval, schema, quality/errors, monitored host identity, metrics, bounded size and heartbeat. | Contract golden files round-trip on target schema; 1 Hz messages validate; malformed/mismatched identity rejected by mock. |
+| AG-0701 | Define Live 1Hz **frame** envelope with only fresh due 1s/5s/30s observations and per-metric original measured_at/status; optional old display cache must carry source time, TTL/age and new_observation=false. | Golden mock fixtures reject repeated old metrics as fresh or not_due as missing; no history storage or mismatched identity. |
 | AG-0702 | Add bounded non-durable outbound live buffer, explicit drop/backpressure metrics and independent goroutine lifecycle. | Slow/blocked mock Bridge cannot delay collector commit or minute/final rollups; bounded memory; dropped live events counted. |
 | AG-0703 | Implement reconnect and heartbeat with timeout/jitter, no per-second SSH or connection open/close; backfill semantics explicitly **not** historical replay. | Force 10 disconnections and recovery; no runaway goroutines/socket count; UI gets new live samples after reconnection; no fabricated historical stream. |
 | AG-0704 | Provide mock Bridge contract tests that relay to a live subscriber and contain **no DB/history reads/writes**. | Test double assertions: no historical query or storage interface exercised; offline Persistence still permits live relay. |
@@ -239,7 +244,7 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 
 | Ticket | Deliverable / precise scope | Tests and acceptance |
 |---|---|---|
-| AG-0801 | Define submission envelope: stable record ID, agent/host identity, UTC start, 900s resolution, schema version, completion/coverage, checksum/content hash, payload and retry identity. | Mock API rejects raw/60s data, wrong host/period, malformed checksum, non-finalized and unauthorized rows. |
+| AG-0801 | Define immutable final-only 900s envelope with stable ID/hash and per-metric cadence, original measured peak/last, quality/stale, independent coverage and profile version alongside frame coverage. | Mock rejects raw/60s, wrong agent/hash/domain and a history payload that turns not_due/cache into valid samples. |
 | AG-0802 | Implement oldest-first pending replay with bounded in-flight work, authenticated transport, retryable/permanent error classification, exponential backoff + jitter. | Simulate outage, throttling and restart; pending order preserved, no hot retry loop, stream/collection unaffected. |
 | AG-0803 | Verify a **durable idempotent commit ACK** that binds agent ID, record ID, interval, payload hash/schema and approved persistence domain; atomically set local `persisted_at` **only after** valid ACK. | Fake HTTP 200 lacking durable ACK, forged ACK, wrong hash/domain/ID or transient error never changes `persisted_at`. |
 | AG-0804 | Handle commit-success/ACK-lost split-brain retry: same stable record ID and payload; central mock upserts/deduplicates without duplicate logical row. | Kill network after central commit before ACK; restart/resubmit N times → exactly one logical central row and one local persisted timestamp after valid ACK. |
@@ -282,9 +287,9 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 
 | Ticket | Deliverable / precise scope | Tests and acceptance |
 |---|---|---|
-| AG-1101 | Run full deterministic data-integrity/failure-injection matrix: crash before/during/after minute and 15m commits, power loss/WAL, DB busy/corruption, full disk, clock jumps, network loss and ACK loss. | All INV-01–10 hold; every data gap/error is observable; no acknowledged false success or silently removed unsaved/pending rows. |
-| AG-1102 | Run multi-host and N=3 dual-channel E2E with separate Bridge mock and durable central API mock, replay, shared/non-shared domains and recovery from 60+ days offline. | Final-only 900s ingestion, live 1s relay, independent channels, stable IDs, idempotent central records and blocked unsafe domain failover confirmed. |
-| AG-1103 | Run sustained reference benchmarks and 60-day accelerated virtual-time aging for CPU/RSS/SQLite/WAL/retention, replay catch-up and high-cardinality mount/interface inventories. | Measurements with hardware/OS/tooling included; meets approved DEC-08 targets or fails release gate with a tracked mitigation. |
+| AG-1101 | Run full deterministic integrity/fault matrix, including 1s/5s/30s due failures, cached stale/true zero, crash/clock/profile changes, SQLite, Live, auth, ACK, 60d retention. | All INV-01–13 hold; gaps/errors and independently stale metrics observable; no fabricated success or removal of unsaved/pending. |
+| AG-1102 | Run N=3 Live/Persistence E2E with independent outages, per-metric 1s/5s/30s Live frames, final-only 900s quality/coverage, hash/replay, shared/split domains and 60+ day recovery. | Bridge never stores history; 900s summary retains exact per-metric count/quality; no stale inflation or duplicate durable rows. |
+| AG-1103 | Benchmark one-hour native 1Hz frames, actual 1s/5s/30s collection, health/quality cost, high-cardinality mount/interface and disk I/O, SQLite/WAL/retention and 60-day replay. | CPU <=5% one core mean, peak RSS <=128MB, frame P99 jitter <=500ms, counts 3600/720/120 due on uninterrupted hour; otherwise release BLOCKED. |
 | AG-1104 | Verify platform matrix for Linux amd64, arm64, armv7, armv6: build, native smoke, service, network auth, SQLite integrity and artifact authenticity. | Every advertised production platform passes native qualification; unqualified platforms are not claimed as production-supported. |
 | AG-1105 | Review security (spoof/replay/token/cert/ACL/key exposure), docs, migration/restore, license provenance, API contract owners and all linked evidence; freeze Agent scope. | All P0/P1 blockers closed, owner checklist signed; versioned tag/release is authorized separately, no unreviewed runtime/API behavior. |
 
@@ -299,9 +304,9 @@ The **authoritative Given/When/Then acceptance text** is [AGENT_ACCEPTANCE_AND_T
 | P00-AC-01–20 | P00 | Design/docs/external agreement sign-off |
 | AC-001–004 | P01 | Collector/daemon/legacy migration |
 | AC-005–008 | P02 | SQLite/identity/recovery |
-| AC-009–012 | P03 | 1Hz sampler |
-| AC-013–017 | P04 | 1m+saved atomicity |
-| AC-018–022 | P05 | 15m/60d/61d retention |
+| AC-009–012 | P03 | 1Hz raw frames; real per-metric 1s/5s/30s cadence, due failures, fresh/stale and early health |
+| AC-013–017 | P04 | 1m per-metric opportunity denominators, quality and saved atomicity |
+| AC-018–022 | P05 | 15m metric-specific weighted rollup, 60d/61d retention |
 | AC-023–027 | P06 | mTLS/config/authorization |
 | AC-028–031 | P07 | stateless live bridge |
 | AC-032–038 | P08 | durable ACK/replay |
@@ -317,8 +322,8 @@ The following are **contract tests against mocks** in this repo. They are not pe
 
 | Contract | Minimum external guarantee |
 |---|---|
-| Live Bridge | Authenticated + authorized inbound Agent stream, subscribed UI forwarding, no durable history or historical query route; close/error/heartbeat semantics |
-| Persistence API | Authenticated + authorized `agent_id`, **900s final-only** ingestion, stable-ID idempotent durable PostgreSQL commit, ACK containing verifiable ID/hash/domain, typed errors and retryability |
+| Live Bridge | Authenticated + authorized inbound 1Hz Agent frame with original 1s/5s/30s due measured_at, optional age-labeled old display cache, subscribed UI forwarding, no history or historical query; close/error/heartbeat semantics |
+| Persistence API | Authorized `agent_id`, **900s final-only** with frame and per-metric expected/valid/error/quality fields, stable-ID idempotent durable PostgreSQL commit, verifiable ID/hash/domain ACK and typed retryability |
 | Historical API | UI historical reads reflect durable central records; never bridge/Agent SQLite; late-arrival correction and central 30-day/1-year/long-term policies documented by their owner |
 | Monitoring registration/PKI | Trusted certificate authority, server identity, Agent enrollment/rotation/revocation, allowed endpoint/channel mappings; controlled restoration |
 | Desktop/SSH legacy | Legacy v0.1.0 may continue for existing consumers pending explicit versioned migration. **New daemon removes public v1 CLI**, must never silently replace old consumers; core SSH/vault unchanged. |
@@ -344,12 +349,12 @@ Recommended evidence path convention (PROPOSED; avoid committing bulky test outp
 
 **Release candidate checklist (all required):**
 
-- [ ] DEC-01–11 approved; P00-AC-01–20 and G00 external contract/QA evidence explicitly signed.
+- [ ] DEC-01–11 and **AD-01–03** approved, including 1Hz frame with independent metric due policies and first-class quality/freshness; P00-AC-01–20 and external G00 sign-offs recorded.
 - [ ] G01–G10 and AC-001–055 verified with linked evidence.
 - [ ] No unknown “partial success” for raw saved, minute final, 15m final or central durable ACK.
-- [ ] All advertised platforms native-tested; CPU, RSS, disk/WAL, jitter and catch-up thresholds approved and met.
+- [ ] All advertised platforms native-tested; 1s/5s/30s due cadence and metric freshness correctness, CPU, RSS, disk/WAL, jitter and catch-up thresholds measured and met.
 - [ ] N=3 separate-channel failover/failback and ACK-domain test passes.
-- [ ] No history through Bridge, no raw/minute to Persistence API, no PostgreSQL directly from Agent.
+- [ ] No history through Bridge, no raw/minute to Persistence API, no PostgreSQL directly from Agent; no cached stale value reported as a newly measured metric.
 - [ ] 60-day final history and 61-day pending/recovery policy proved without silent data loss.
 - [ ] Negative mTLS/authz, replay, clone and cert rotation cases pass.
 - [ ] Daemon-v2 migration evidence protects legacy CLI v1 consumers; no incompatible silent replacement; Desktop SSH remains untouched.
