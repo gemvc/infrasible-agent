@@ -233,6 +233,20 @@ func (s *Store) Save(ctx context.Context, f collector.Frame) error {
 	if e != nil {
 		return e
 	}
+	// Persist actual per-family observation outcomes, not a static policy
+	// placeholder. Families absent from this frame were not measured here.
+	quality := make(map[string]string, len(f.Metrics))
+	for family, observation := range f.Metrics {
+		status := observation.Status
+		if status == "" {
+			status = "missing"
+		}
+		quality[family] = status
+	}
+	qualityJSON, e := json.Marshal(quality)
+	if e != nil {
+		return e
+	}
 	if f.ObservedAtMS <= 0 {
 		return errors.New("missing observed timestamp")
 	}
@@ -242,7 +256,7 @@ func (s *Store) Save(ctx context.Context, f collector.Frame) error {
 	}
 	defer tx.Rollback()
 	_, e = tx.ExecContext(ctx, `INSERT INTO raw_samples(sample_id,observed_at_ms,effective_at_ms,elapsed_ms,metrics_json,quality_json)
- VALUES(?,?,?,?,?,?)`, hex.EncodeToString(raw), f.ObservedAtMS, f.ObservedAtMS, f.ElapsedMS, string(data), `{"policy":"1s/5s/30s"}`)
+ VALUES(?,?,?,?,?,?)`, hex.EncodeToString(raw), f.ObservedAtMS, f.ObservedAtMS, f.ElapsedMS, string(data), string(qualityJSON))
 	if e != nil {
 		return e
 	}
