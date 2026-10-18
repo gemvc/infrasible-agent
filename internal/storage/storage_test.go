@@ -197,3 +197,73 @@ func TestQualityStatusSurvivesMinuteAndQuarterRollup(t *testing.T) {
 		t.Fatalf("not_due counted as a failure: %#v", final.Summary["cpu"])
 	}
 }
+
+func TestCadenceCoverageAndRestartReplay(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "restarted.db")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 10, 18, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 60; i++ {
+		at := start.Add(time.Duration(i) * time.Second).UnixMilli()
+		metrics := map[string]collector.Observation{
+			"cpu": {Status: "valid", MeasuredAtMS: at, Value: float64(i)},
+		}
+		if i%5 == 0 {
+			metrics["load"] = collector.Observation{Status: "valid", MeasuredAtMS: at, Value: float64(i)}
+		}
+		if i%30 == 0 {
+			metrics["filesystem"] = collector.Observation{Status: "valid", MeasuredAtMS: at, Value: float64(i)}
+		}
+		if err := store.Save(ctx, collector.Frame{ObservedAtMS: at, Metrics: metrics}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Finalize(ctx, start.Add(4*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	var raw string
+	if err := store.db.QueryRowContext(ctx,
+		"SELECT quality_json FROM aggregates WHERE resolution_seconds=60 AND period_start_ms=?",
+		start.UnixMilli()).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var quality QualityCounts
+	if err := json.Unmarshal([]byte(raw), &quality); err != nil {
+		t.Fatal(err)
+	}
+	for family, expected := range map[string]int64{"cpu": 60, "load": 12, "filesystem": 2, "network": 60} {
+		if quality[family]["expected_due"] != expected {
+			t.Fatalf("%s expected_due=%d want %d", family, quality[family]["expected_due"], expected)
+		}
+	}
+	if quality["cpu"]["unobserved_due"] != 0 || quality["load"]["unobserved_due"] != 0 ||
+		quality["filesystem"]["unobserved_due"] != 0 || quality["network"]["unobserved_due"] != 60 {
+		t.Fatalf("incorrect cadence coverage after restart: %#v", quality)
+	}
+	if err := store.Finalize(ctx, start.Add(18*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	p, ok, err := store.OldestPending(ctx)
+	if err != nil || !ok {
+		t.Fatalf("pending after restart: %v", err)
+	}
+	var final Final
+	if err := json.Unmarshal(p.Payload, &final); err != nil {
+		t.Fatal(err)
+	}
+	if final.Quality["load"]["expected_due"] != 180 || final.Quality["load"]["unobserved_due"] != 168 ||
+		final.Quality["filesystem"]["expected_due"] != 30 || final.Quality["filesystem"]["unobserved_due"] != 28 {
+		t.Fatalf("15-minute cadence coverage incorrect: %#v", final.Quality)
+	}
+}
