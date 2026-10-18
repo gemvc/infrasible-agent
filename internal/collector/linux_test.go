@@ -64,3 +64,25 @@ func TestFilesystemStatfsErrorRejectsPartialInventory(t *testing.T) {
 		t.Fatalf("partial filesystem data accepted: got=%v err=%v probes=%d", got, err, seen)
 	}
 }
+
+func TestMemoryAvailableZeroIsValid(t *testing.T) {
+	input := "MemTotal: 1024 kB\nMemAvailable: 0 kB\nMemFree: 300 kB\nBuffers: 50 kB\nCached: 100 kB\n"
+	got, err := memoryFrom(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["available"] != 0 {
+		t.Fatalf("valid zero MemAvailable was replaced with fallback: %+v", got)
+	}
+}
+
+func TestMemoryAvailableFallbackOnlyWhenFieldIsAbsent(t *testing.T) {
+	input := "MemTotal: 1024 kB\nMemFree: 300 kB\nBuffers: 50 kB\nCached: 100 kB\n"
+	got, err := memoryFrom(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["available"] != 450*1024 {
+		t.Fatalf("missing MemAvailable did not use documented fallback: %+v", got)
+	}
+}
