@@ -86,7 +86,7 @@ CREATE INDEX idx_ack_final_expiry
 - `period_start_ms >= 0` limits historical windows before Unix epoch intentionally; target agent is modern Linux; assess explicit edge fixture.
 - `raw_samples.saved` means aggregated in a **committed minute**, not persisted centrally.
 - `aggregates.persisted_at_ms` exists only on **900s final**, and is written only after authenticated domain-matching durable ACK.
-- `wire_payload` holds the exact immutable serialized final submission bytes to retry; `payload_sha256` is SHA-256 of those exact bytes. This avoids nondeterministic re-serialization across versions/restarts. This representation is an envelope duplication of summary (storage cost measured); it avoids ambiguity in stable retry hashes.
+- `wire_payload` holds the exact immutable serialized final submission bytes **including** the `payload_sha256` field for byte-identical retries. To avoid a self-referential hash, `payload_sha256` is SHA-256 over the RFC 8785 (JCS) canonical UTF-8 JSON bytes of the immutable submission object **with the `payload_sha256` member omitted**. Reject non-canonical/NaN/Infinity inputs; the server independently recomputes the same digest. The transmitted `wire_payload` is not itself the hashed byte string. This duplicates summary data (storage cost must be measured) and avoids nondeterministic re-serialization on retries.
 - `record_id` derives deterministically from `agent_id`, UTC period start and period length **without cert-rotation epoch or software version**. Same final logical record remains same ID after cert renewal; a different payload for same ID is an error, not a silent replacement.
 - UTC fields as signed integer epoch milliseconds; use `[start_ms, end_ms)`. Unknown/missing values are JSON null/quality statuses, **not valid zero**.
 
@@ -144,7 +144,7 @@ BEGIN IMMEDIATE
   aggregate metric numerators and *valid elapsed denominators*
   merge valid extrema/peak time, last, per-entity and anomaly summaries
   construct stable 900s logical record, deterministic record_id,
-    immutable encoded wire_payload, SHA256(wire_payload)
+    JCS_canonical_payload_without_hash, SHA256(canonical_payload), immutable wire_payload_with_hash
   INSERT aggregates(resolution=900,...,persisted_at_ms=NULL)
     ON CONFLICT only if byte/hash identical; else fail/alert
   advance committed quarter watermark if retained
