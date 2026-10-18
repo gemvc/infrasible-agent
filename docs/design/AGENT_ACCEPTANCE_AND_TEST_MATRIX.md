@@ -47,7 +47,7 @@
 | AC-007 | Given upgrade/failed migration/downgrade attempts, when schema version rules execute, then upgrade is atomic and unsafe binary/schema mismatch fails closed. | FT P02 |
 | AC-008 | Given restart/same-host restore/clone, when identity loads, then authorized host preserves stable ID; cloned host cannot reuse registration without a distinct Agent ID and central-side quarantine/approval; no secrets disclose. | IT/SEC P02/P06 |
 | AC-009 | Given a healthy reference host and fake clock, when sampling runs, then nominal cadence is ~1 second with recorded actual elapsed time and no invented samples. | NT/UT P03 |
-| AC-010 | Given missing/partial reads, counter resets and mount/interface churn, when sampled, then error/coverage semantics are correct per metric and entity. | UT P03 |
+| AC-010 | Given missing/partial reads, counters exceeding 2^53, counter resets and mount/interface churn, when sampled and serialized, then precision, error/coverage semantics and per-entity validity are preserved; no unsafe JSON number truncation. | UT P03 |
 | AC-011 | Given absent networks/Bridge/API, when sampling continues, then raw rows persist independently with bounded memory and observable gaps. | IT/FT P03 |
 | AC-012 | Given a 1-hour run and restart, when resumed, then no duplicate raw IDs, runaway timers or per-second SSH reconnects occur. | NT P03 |
 | AC-013 | Given time xx:xx:00.000/59.999, when minute closes, then `[start,end)` window includes each valid raw ID exactly once. | UT P04 |
