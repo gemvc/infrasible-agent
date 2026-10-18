@@ -36,6 +36,15 @@ type ACK struct {
 }
 
 func tlsFor(s config.Server) (*tls.Config, error) {
+	// Never load private-key material through a symlink or a file readable
+	// by other users. Enrollment must provision the key for the daemon user.
+	keyInfo, e := os.Lstat(s.ClientKeyFile)
+	if e != nil {
+		return nil, e
+	}
+	if !keyInfo.Mode().IsRegular() || keyInfo.Mode().Perm()&0077 != 0 {
+		return nil, errors.New("client private key must be a regular file accessible only to its owner")
+	}
 	pem, e := os.ReadFile(s.CAFile)
 	if e != nil {
 		return nil, e
