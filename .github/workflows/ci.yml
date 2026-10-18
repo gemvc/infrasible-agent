@@ -38,6 +38,12 @@ jobs:
           set -euo pipefail
           printf '{"config_version":1,"data_path":"%s/agent.db","monitoring_servers":[]}\n' "$RUNNER_TEMP" > "$RUNNER_TEMP/config.json"
           ./dist/infrasible-agent-linux-amd64 config validate --config="$RUNNER_TEMP/config.json" | grep -Fq '"valid":true'
+          # First run is the ONLY operation permitted to bootstrap new Agent identity.
+          set +e
+          timeout -s TERM 3s ./dist/infrasible-agent-linux-amd64 run --config="$RUNNER_TEMP/config.json" > "$RUNNER_TEMP/agent.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -eq 124
           ./dist/infrasible-agent-linux-amd64 storage status --config="$RUNNER_TEMP/config.json" | grep -Fq '"pending":0'
           ./dist/infrasible-agent-linux-amd64 health status --config="$RUNNER_TEMP/config.json" | grep -Fq '"sqlite_ready":true'
           ./dist/infrasible-agent-linux-amd64 storage cleanup --dry-run --config="$RUNNER_TEMP/config.json" | grep -Fq '"dry_run":true'
