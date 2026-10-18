@@ -127,13 +127,15 @@ func TestRawAggregationCountsScalarDueOnce(t *testing.T) {
 func TestQualityStatusSurvivesMinuteAndQuarterRollup(t *testing.T) {
 	ctx := context.Background()
 	db, err := Open(filepath.Join(t.TempDir(), "quality.db"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer db.Close()
 	start := time.Date(2026, 10, 18, 0, 0, 0, 0, time.UTC)
 	cases := []struct {
 		second int
 		status string
-		value any
+		value  any
 	}{
 		{0, "valid", float64(0)},
 		{1, "error", nil},
@@ -149,26 +151,44 @@ func TestQualityStatusSurvivesMinuteAndQuarterRollup(t *testing.T) {
 			Metrics: map[string]collector.Observation{
 				"cpu": {Status: tc.status, MeasuredAtMS: at, Value: tc.value},
 			},
-		}); err != nil { t.Fatal(err) }
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// First finalize the minute while its quarter is still open.
-	if err := db.Finalize(ctx, start.Add(4*time.Minute)); err != nil { t.Fatal(err) }
+	if err := db.Finalize(ctx, start.Add(4*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
 	var minuteQuality string
 	if err := db.db.QueryRowContext(ctx,
 		"SELECT quality_json FROM aggregates WHERE resolution_seconds=60 AND period_start_ms=?",
-		start.UnixMilli()).Scan(&minuteQuality); err != nil { t.Fatal(err) }
-	var qm QualityCounts
-	if err := json.Unmarshal([]byte(minuteQuality), &qm); err != nil { t.Fatal(err) }
-	for _, tc := range cases {
-		if qm["cpu"][tc.status] != 1 { t.Fatalf("minute status %s: %#v", tc.status, qm) }
+		start.UnixMilli()).Scan(&minuteQuality); err != nil {
+		t.Fatal(err)
 	}
-	if err := db.Finalize(ctx, start.Add(18*time.Minute)); err != nil { t.Fatal(err) }
-	p, ok, err := db.OldestPending(ctx)
-	if err != nil || !ok { t.Fatalf("missing final: %v", err) }
-	var final Final
-	if err := json.Unmarshal(p.Payload, &final); err != nil { t.Fatal(err) }
+	var qm QualityCounts
+	if err := json.Unmarshal([]byte(minuteQuality), &qm); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range cases {
-		if final.Quality["cpu"][tc.status] != 1 { t.Fatalf("final status %s: %#v", tc.status, final.Quality) }
+		if qm["cpu"][tc.status] != 1 {
+			t.Fatalf("minute status %s: %#v", tc.status, qm)
+		}
+	}
+	if err := db.Finalize(ctx, start.Add(18*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	p, ok, err := db.OldestPending(ctx)
+	if err != nil || !ok {
+		t.Fatalf("missing final: %v", err)
+	}
+	var final Final
+	if err := json.Unmarshal(p.Payload, &final); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range cases {
+		if final.Quality["cpu"][tc.status] != 1 {
+			t.Fatalf("final status %s: %#v", tc.status, final.Quality)
+		}
 	}
 	if final.Summary["cpu"].Count != 1 || final.Summary["cpu"].Sum != 0 {
 		t.Fatalf("valid zero lost or invalid measurement counted: %#v", final.Summary["cpu"])
