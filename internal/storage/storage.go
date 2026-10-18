@@ -147,10 +147,14 @@ func OpenExisting(path string) (*Store, error) {
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return nil, errors.New("agent storage must be an existing regular non-symlink file")
 	}
-	return Open(path)
+	return open(path, false)
 }
 
 func Open(path string) (*Store, error) {
+	return open(path, true)
+}
+
+func open(path string, allowBootstrap bool) (*Store, error) {
 	if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
 		return nil, e
 	}
@@ -188,6 +192,10 @@ func Open(path string) (*Store, error) {
 	var id string
 	err := db.QueryRowContext(ctx, "SELECT agent_id FROM server_info WHERE singleton_id=1").Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
+		if !allowBootstrap {
+			db.Close()
+			return nil, errors.New("existing agent database has no registered identity")
+		}
 		raw := make([]byte, 16)
 		if _, e = rand.Read(raw); e != nil {
 			db.Close()
