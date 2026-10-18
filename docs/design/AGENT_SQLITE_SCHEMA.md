@@ -10,7 +10,7 @@
 
 One local SQLite database, exactly three logical **application** tables `server_info`, `raw_samples`, `aggregates`. No JSONL, Redis, broker, queue table or separate intermediate database. Internal SQLite structures such as `sqlite_sequence` do not constitute an Agent application table. One controlled writer, concurrent bounded readers, local filesystem, `WAL`, `synchronous=FULL`, explicit transactions and `PRAGMA user_version`. Pure Go driver selected after native target qualification; first benchmark candidate `modernc.org/sqlite`, alternative `ncruces/go-sqlite3` subject to measured CPU/RSS compatibility. No implied driver has passed tests yet.
 
-## 2. Three-table DDL (initial schema version (value pending final driver/DDL sign-off))
+## 2. Three-table DDL (fresh-install schema draft; initial version to be finalized)
 
 The canonical future implementation must retain these semantics even if constrained SQL types or column names change after review. Any such change requires an ADR and contract-test update.
 
@@ -18,7 +18,7 @@ The canonical future implementation must retain these semantics even if constrai
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = FULL;
--- PRAGMA user_version = <approved_initial_schema_version>; set during atomic fresh bootstrap.
+-- Set PRAGMA user_version to the approved integer in the atomic fresh bootstrap; version is not finalized by this draft.
 
 CREATE TABLE server_info (
     singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
