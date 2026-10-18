@@ -1,4 +1,4 @@
-# Agent configuration — v0.2.0
+# Agent configuration — v0.3.0
 
 The daemon reads `/etc/infrasible-agent/config.json`. The format has `config_version: 1` and is JSON. Unknown fields fail validation. The current implementation reads the config at process start: **automatic atomic reload and desired-vs-effective status are not implemented**. A validated change requires a controlled systemd restart.
 
