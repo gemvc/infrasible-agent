@@ -25,7 +25,7 @@
 | P00-AC-08 | Given slow/disconnected Bridge and 30s-old cached capacity, when Live contract reviewed, then bounded drops, fresh-frame delivery, preserved original metric timestamp/age/stale status, no new cached observation and no historical storage are explicit. | CT P00 |
 | P00-AC-09 | Given HTTP 200 without valid durable ACK, when protocol reviewed, then persisted_at remains NULL and stable replay ID/hash are required. | CT P00 |
 | P00-AC-10 | Given central commit-success/ACK-loss, when mock semantics reviewed, then only one logical central final and an authenticated domain-bound ACK can complete local state. | CT P00 |
-| P00-AC-11 | Given N=1/3/10 with mixed permissions, when selection documented, then priority is array order, one active per channel and independent endpoint choice. | CT P00 |
+| P00-AC-11 | Given exactly one Live Relay configured, when it disconnects and returns, then only that endpoint is retried; no alternate Relay or replay is used, while Persistence remains independent. | CT P00 |
 | P00-AC-12 | Given two independent persistence domains, when failover documented, then Agent cannot treat shared config string or prior ACK as cross-domain proof. | SEC P00 |
 | P00-AC-13 | Given cert expiration/revocation/clone, when trust flow documented, then fail closed, re-enroll and identity handling are explicit. | SEC P00 |
 | P00-AC-14 | Given SQLite corruption/host restore, when operator workflow documented, then no auto-reset and same-host versus clone identity is unambiguous. | FT-REVIEW P00 |
@@ -62,7 +62,7 @@
 | AC-020 | Given pending final records inserted out-of-order, when queried, then oldest unACKed 900s period is returned first. | IT P05 |
 | AC-021 | Given 61 virtual days including unACKed old data, when retention runs, then ACKed data follows approved expiry policy and unACKed data is never silently dropped. | FT P05 |
 | AC-022 | Given measured reference cardinality, when 60-day storage simulation runs, then DB/WAL sizing and cleanup comply with approved budget with documented assumptions. | NT P05 |
-| AC-023 | Given config with N=1/3/10, when loaded, then priority equals array index, no fixed two-server constraint, unsupported versions rejected. | UT P06 |
+| AC-023 | Given a single authorized Live Relay URL, when config is validated, then an additional Live Relay or unsupported schema is rejected without disturbing the active configuration. Persistence config is independently validated. | UT P06 |
 | AC-024 | Given bad/untrusted/expired/revoked cert or wrong server name, when dialled, then no operational mTLS channel forms and there is no plaintext fallback. | SEC P06 |
 | AC-025 | Given authenticated but unauthorized Agent/channel, when Hello or send executes, then authorization is denied with typed non-secret diagnostic. | SEC/CT P06 |
 | AC-026 | Given certificate/key rotation during service life, when rotated, then new trusted identity reconnects and old revoked identity cannot transmit. | SEC/IT P06 |
@@ -177,3 +177,7 @@ These are **new proposed acceptance cases**; they are not PASSED and do not alte
 | MGMT-09 | Given arbitrary/unauthorized local invocation, when requesting config write, resource-limit change, destructive cleanup or SQL injection, then OS privilege checks and restricted command schema reject it with redacted audit output. | Security |
 
 **Gate policy:** Document-only updates do not constitute implementation evidence or override blocked G00. Incorporate cases into the canonical ticket/AC mapping during the next approved gate review; until then MGMT cases are explicit additions awaiting ID assignment and external Desktop UX agreement.
+
+## Live single-Relay acceptance correction (2026-10-18)
+
+Owner rescinds Live N=3/10 HA, failover/failback and Relay-forwarding requirements. Replace Live portions of AC-039–044, AC-053, G09 and N-endpoint fixture inventories at G00 reconciliation, **without removing Persistence-domain security tests**. Required cases: (1) a second Live URL fails validation; (2) outage degrades Live but not sampling/SQLite/Persistence; (3) same-Relay reconnect and Desktop resubscribe restore only fresh Live frames; (4) no forwarding/replay/election; (5) bad Relay mTLS/authz still fails closed. Previous conflicting Live HA tests are superseded, not passed. G00 remains BLOCKED.

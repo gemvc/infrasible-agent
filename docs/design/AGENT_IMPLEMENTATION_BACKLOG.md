@@ -254,9 +254,9 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 
 **Gate G08:** AC-032–038 pass; end-to-end mock central durable commit and deterministic ACK-loss replay; no central API implementation added to this repo.
 
-## P09 — Ordered N-endpoint Active–Standby and failback (P0)
+## P09 — Persistence destination security and channel isolation (revised; no Live HA)
 
-**Outcome:** predictable channel-independent HA with finite resources. **Prereq:** G07, G08, DEC-05.
+**Outcome:** preserve Persistence-domain/ACK authorization and independence from the sole Live Relay. No Live HA, election or failback. **Prereq:** G07, G08.
 
 | Ticket | Deliverable / precise scope | Tests and acceptance |
 |---|---|---|
@@ -266,7 +266,7 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 | AG-0904 | Bind durable ACK/dedup domain to authorized central domain; prevent treating Server A's ACK as evidence Server B contains identical data. | Two mock central stores (shared vs independent) prove safe selection and explicit blocked/alerted unsafe failover; replay remains idempotent within domain. |
 | AG-0905 | Config reload and endpoint removal/revocation, deterministic re-evaluation; ensure old unauthorized peers cannot retain access. | Delete/reorder/disable endpoint under load; safe drain/cancel, no credentials leak, no unauthorized persisted ACK. |
 
-**Gate G09:** AC-039–044 pass with recorded N=3 failover/failback traces and domain-isolation negative tests.
+**Gate G09:** revise AC-039–044 to remove Live multi-Relay assumptions while keeping Persistence-domain authorization and channel-isolation negative tests; evidence remains pending.
 
 ## P10 — Unattended operations, security and clean-install packaging (P0/P1)
 
@@ -404,3 +404,7 @@ Definition of Done: <CI link, tests, logs, review approvals, documentation>
 - **P11 / acceptance:** Prove MGMT-01–09 with filesystem race, unauthorized caller, malformed config, crash, stale alert quality, OOM/throttle, ENOSPC, WAL checkpoint, 1Hz nonblocking and Desktop-disconnected fixtures. Keep 128MB/5%-core DEC-08 performance targets separate from operator-selected hard ceilings.
 
 No executable daemon/local CLI, Desktop UI, alert notifications, package updates or deployment is claimed by this documentation change.
+
+## Live Relay simplification — owner decision (2026-10-18)
+
+One Live Relay only; no standby, Master, multi-Relay forwarding, discovery, priority selection, Live failover/failback or split-brain logic. On outage Live stops; same-endpoint bounded retries and Desktop resubscription restore fresh frames. Collection, SQLite and separate Persistence proceed. P06 validates one Live URL; P07 reconnects only to that URL; remove Live HA work from AG-0901–0905, and reconcile stale N=3/10 Live test/gate references before G00. Persistence-domain and durable ACK defenses **remain in scope**. This document change does not implement anything.
