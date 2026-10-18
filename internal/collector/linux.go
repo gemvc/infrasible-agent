@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -242,22 +243,34 @@ func readDisk() (map[string][2]uint64, error) {
 		return nil, e
 	}
 	defer f.Close()
+	return diskFrom(f)
+}
+
+// diskFrom rejects malformed nonempty records rather than silently reporting
+// a partial disk inventory as a valid measurement.
+func diskFrom(r io.Reader) (map[string][2]uint64, error) {
 	out := map[string][2]uint64{}
-	s := bufio.NewScanner(f)
+	s := bufio.NewScanner(r)
 	for s.Scan() {
 		p := strings.Fields(s.Text())
-		if len(p) < 10 {
+		if len(p) == 0 {
 			continue
 		}
-		// Kernel sectors are 512 bytes for /proc/diskstats counters.
+		if len(p) < 10 {
+			return nil, fmt.Errorf("short diskstats record: %q", s.Text())
+		}
+		// Kernel diskstats sectors are 512-byte units.
 		read, e1 := strconv.ParseUint(p[5], 10, 64)
 		write, e2 := strconv.ParseUint(p[9], 10, 64)
-		if e1 != nil || e2 != nil {
-			continue
+		if e1 != nil || e2 != nil || read > ^uint64(0)/512 || write > ^uint64(0)/512 {
+			return nil, fmt.Errorf("invalid diskstats counters for %q", p[2])
 		}
 		out[p[2]] = [2]uint64{read * 512, write * 512}
 	}
-	return out, s.Err()
+	if err := s.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 func readFS() (map[string]map[string]uint64, error) {
 	f, e := os.Open("/proc/mounts")
