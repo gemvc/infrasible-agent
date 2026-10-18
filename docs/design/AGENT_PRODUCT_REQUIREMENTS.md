@@ -1,9 +1,12 @@
 # Infrasible Monitoring Agent — Product Requirements
 
+> **Implementation reconciliation (main, PR #11 / v0.2.0):** This document retains the owner-approved target and acceptance criteria; its historical source-audit claims about a CLI-only repository are no longer current. The code now contains an initial Linux daemon, SQLite three-table implementation, outbound mTLS clients and local storage CLI. This does **not** imply P00–P11 acceptance, central interface signoff, release security qualification, full metric quality/freshness coverage, enrollment/rotation, failover authorization or Desktop UI integration. Treat earlier baseline language below as archived **design-time assessment**, not current shipped behavior. The authoritative current command list, build and deployment steps are [README](../../README.md), [Installation](../INSTALLATION.md), [Configuration](../CONFIGURATION.md) and [Operations](../DAEMON_RUNBOOK.md). Keep outstanding design invariants intact.\n\n
+
+
 > **Greenfield product baseline (approved 2026-10-18):** This is a new product with zero users, zero deployments and zero production data. Implement a clean-install daemon only. The historical `v0.1.0` CLI and its release are reference material, not supported consumers or migration targets. No backward compatibility, coexistence, old-database import, pre-release upgrade/downgrade or old-client test gate is required. Keep fresh-schema version validation, crash-safe restart, same-host recovery, identity/certificate rotation, security and release tests. Future post-launch upgrades are outside the initial release. This decision is canonical in this document.
 
-**Status:** FINAL OWNER-APPROVED PRODUCT DESIGN (2026-10-18), including independent metric cadences and first-class quality/freshness. G00 evidence and external-interface sign-offs remain pending; no runtime implementation is claimed.
-**Scope:** standalone, open-source Linux Agent in `gemvc/infrasible-agent`. **Source baseline:** `main@8b43c8a20d3a00fb030634c46d4677eaf52661ed` (current source is legacy v0.1.0).
+**Status:** FINAL OWNER-APPROVED PRODUCT DESIGN (2026-10-18), including independent metric cadences and first-class quality/freshness. G00 evidence and external-interface sign-offs remain pending; an initial v0.2.0 implementation now exists; production acceptance is not claimed.
+**Scope:** standalone, open-source Linux Agent in `gemvc/infrasible-agent`. **Source baseline:** `main@8b43c8a20d3a00fb030634c46d4677eaf52661ed` (historic audited source was v0.1.0; current source is v0.2.0 daemon).
 **Change authority:** owner explicitly approved DEC-01–11 and the reviewed engineering resolutions on 2026-10-18, then authorized repository/backlog documentation updates. This does **not** authorize runtime implementation, changes to Transible Desktop/SSH, other services, production deployments, releases, or a license change without legal clearance.
 
 ## Existing source code policy — reference only (owner directive 2026-10-18)
@@ -149,7 +152,7 @@ Agent service target: non-root account supervised by systemd on supported distri
 
 ## 8. Source inventory and source-of-truth
 
-As-built at baseline: `main.go` (snapshot and CLI stdout), `version.go`, `main_test.go`, `version_test.go`, `go.mod` (Go 1.23, no third-party modules), `docs/PROTOCOL.md` (v1 stdout/SSH), `docs/INSTALLATION.md`, `scripts/package-linux.sh`, CI/release workflows, MIT `LICENSE`. v0.1.0 was released 2026-10-17; README still describes it as not yet released. The new architecture is **not currently implemented**. Read historical protocol files as AS-IS, never as overriding TO-BE.
+As-built at baseline: `main.go` (snapshot and CLI stdout), `version.go`, `main_test.go`, `version_test.go`, `go.mod` (Go 1.23, no third-party modules), historical Git tag `v0.1.0` protocol documentation (v1 stdout/SSH), `docs/INSTALLATION.md`, `scripts/package-linux.sh`, CI/release workflows, MIT `LICENSE`. v0.1.0 was released 2026-10-17; README still describes it as not yet released. The new architecture is **not currently implemented**. Read historical protocol files as AS-IS, never as overriding TO-BE.
 
 Canonical split: this file (product/DEC/SLO), `AGENT_ARCHITECTURE.md` (state and boundaries), `AGENT_SQLITE_SCHEMA.md` (DB), `AGENT_PROTOCOL_AND_SECURITY.md` (wire/auth/HA), `AGENT_ACCEPTANCE_AND_TEST_MATRIX.md` (proof), and the existing `AGENT_IMPLEMENTATION_BACKLOG.md` (single implementation plan). Do **not** add a competing implementation plan.
 

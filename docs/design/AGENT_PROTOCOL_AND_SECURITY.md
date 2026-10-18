@@ -1,5 +1,8 @@
 # Infrasible Monitoring Agent — Protocol, Registration and Security
 
+> **Implementation reconciliation (main, PR #11 / v0.2.0):** This document retains the owner-approved target and acceptance criteria; its historical source-audit claims about a CLI-only repository are no longer current. The code now contains an initial Linux daemon, SQLite three-table implementation, outbound mTLS clients and local storage CLI. This does **not** imply P00–P11 acceptance, central interface signoff, release security qualification, full metric quality/freshness coverage, enrollment/rotation, failover authorization or Desktop UI integration. Treat earlier baseline language below as archived **design-time assessment**, not current shipped behavior. The authoritative current command list, build and deployment steps are [README](../../README.md), [Installation](../INSTALLATION.md), [Configuration](../CONFIGURATION.md) and [Operations](../DAEMON_RUNBOOK.md). Keep outstanding design invariants intact.\n\n
+
+
 > **Greenfield scope:** New clean-install daemon; no legacy consumers, migrations or compatibility gates. Canonical decision: [Product Requirements](AGENT_PRODUCT_REQUIREMENTS.md), section 2.
 
 **Status:** architecture-owner-approved engineering baseline; **wire examples and central-side guarantees REQUIRE EXTERNAL INTERFACE OWNER SIGN-OFF** before G00 closes. Agent repo implements clients and mocks only; not production Bridge/API/PKI. **Related:** [Requirements](AGENT_PRODUCT_REQUIREMENTS.md), [Architecture](AGENT_ARCHITECTURE.md), [SQLite](AGENT_SQLITE_SCHEMA.md), [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).

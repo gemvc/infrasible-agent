@@ -1,5 +1,8 @@
 # Infrasible Monitoring Agent — Acceptance and Test Matrix
 
+> **Implementation reconciliation (main, PR #11 / v0.2.0):** This document retains the owner-approved target and acceptance criteria; its historical source-audit claims about a CLI-only repository are no longer current. The code now contains an initial Linux daemon, SQLite three-table implementation, outbound mTLS clients and local storage CLI. This does **not** imply P00–P11 acceptance, central interface signoff, release security qualification, full metric quality/freshness coverage, enrollment/rotation, failover authorization or Desktop UI integration. Treat earlier baseline language below as archived **design-time assessment**, not current shipped behavior. The authoritative current command list, build and deployment steps are [README](../../README.md), [Installation](../INSTALLATION.md), [Configuration](../CONFIGURATION.md) and [Operations](../DAEMON_RUNBOOK.md). Keep outstanding design invariants intact.\n\n
+
+
 > **Greenfield scope:** New clean-install daemon; no legacy consumers, migrations or compatibility gates. Canonical decision: [Product Requirements](AGENT_PRODUCT_REQUIREMENTS.md), section 2.
 
 **Status:** source-grounded acceptance baseline approved for documentation; **NOT EXECUTED** for new architecture. Release requirements are not test results. Existing executable baseline covers only legacy v0.1.0 code/CI.
@@ -158,7 +161,7 @@ Reference load: pinned Linux kernel, CPU/arch, disk/FS type, interface/mount car
 
 P00-AC-01–20 -> AG-0001–0005; AC-001–004 -> AG-0101–0105; AC-005–008 -> AG-0201–0205; AC-009–012 -> AG-0301–0304; AC-013–017 -> AG-0401–0404; AC-018–022 -> AG-0501–0505; AC-023–027 -> AG-0601–0604; AC-028–031 -> AG-0701–0704; AC-032–038 -> AG-0801–0805; AC-039–044 -> AG-0901–0905; AC-045–051 -> AG-1001–1006; AC-052–055 -> AG-1101+ in the single backlog. Ticket-specific pass steps must map to these IDs, and missing coverage blocks the corresponding gate. Preserve IDs; update contract and backlog together on changes.
 
-**Source inventory and constraints:** current only runs CLI v1 and CI package scripts; no actual new architecture integration or native four-arch qualification. `docs/PROTOCOL.md` remains historical AS-IS. Only new docs and existing backlog are authorized by this review; no code, live service, Desktop, license, release or production changes.
+**Source inventory and constraints:** historical audit only covered CLI v1 and its CI packages; current main contains daemon v0.2.0; no actual new architecture integration or native four-arch qualification. historical Git tag `v0.1.0` protocol documentation remains historical AS-IS. Only new docs and existing backlog are authorized by this review; no code, live service, Desktop, license, release or production changes.
 
 ## 8. Operator-managed config and storage: additional design/implementation acceptance (2026-10-18)
 
