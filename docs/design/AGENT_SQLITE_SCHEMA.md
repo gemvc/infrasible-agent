@@ -106,6 +106,7 @@ Watermarks must only advance after corresponding immutable row transactions and 
 - CPU percentages: deltas excluding already included `guest`/`guest_nice` from total tick accounting; reset, hotplug, negative/zero denominator produce quality flags.
 - Memory/free, swap and load: point-in-time gauges; time-weighted average over **valid elapsed coverage**, max/min/last meaningful; explicit unit bytes or normalized load.
 - Filesystems: stable mount/device identifier and canonical mount-path decode; free/total bytes per valid mount, mount-removed flag; absent entity not treated as 0 free bytes.
+- Wire/JSON numeric exactness: represent large `uint64` counters as decimal strings in JSON payloads (especially beyond IEEE-754 safe integer 2^53−1); validate range and unit. SQL timestamps/counts remain bounded signed integers. Canonical JSON hashing must be stable for large counters.
 - Network: absolute rx/tx byte/packet/drop counters plus valid delta/rate on monotonic intervals; reset/wrap/hotplug has explicit invalid-rate epoch, counter deltas accumulate before deriving average rates. Rates must **not** be computed as naïve mean of unweighted instantaneous percentages.
 - Spike/peak: retain max value and UTC first occurrence (tie-breaking deterministic) plus anomaly category/count; preserve per-entity data and high-cardinality caps.
 - Clock anomalies: compare wall UTC vs monotonic elapsed; initial engineering anomaly threshold 2s; quarantine/mark ambiguous attribution and suspend unsafe finalization until trusted, no retroactive mutation of frozen periods.
