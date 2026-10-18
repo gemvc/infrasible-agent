@@ -4,6 +4,7 @@ import (
  "encoding/json"
  "errors"
  "fmt"
+ "io"
  "net/url"
  "os"
  "strings"
@@ -31,7 +32,7 @@ func Load(path string) (Config,error) {
  var c Config
  if e=d.Decode(&c);e!=nil{return Config{},fmt.Errorf("decode config: %w",e)}
  var trailing any
- if e=d.Decode(&trailing);!errors.Is(e,os.ErrClosed) && e==nil{return Config{},errors.New("trailing JSON content")} else if e!=nil && e.Error()!="EOF" {return Config{},fmt.Errorf("trailing JSON: %w",e)}
+ if e=d.Decode(&trailing);e==nil{return Config{},errors.New("trailing JSON content")}else if !errors.Is(e,io.EOF){return Config{},fmt.Errorf("trailing JSON: %w",e)}
  if c.DataPath=="" {c.DataPath="/var/lib/infrasible-agent/agent.db"}
  return c,c.Validate()
 }

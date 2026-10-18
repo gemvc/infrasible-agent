@@ -61,6 +61,10 @@ type StorageStatus struct {
  WALBytes int64 `json:"wal_bytes"`
  SHMBytes int64 `json:"shm_bytes"`
  FilesystemFreeBytes uint64 `json:"filesystem_free_bytes"`
+ FilesystemTotalBytes uint64 `json:"filesystem_total_bytes"`
+ SQLiteFreePageBytes int64 `json:"sqlite_free_page_bytes"`
+ SQLiteAutoVacuumMode int64 `json:"sqlite_auto_vacuum_mode"`
+ LateRaw int64 `json:"late_raw"`
  RawUnsaved int64 `json:"raw_unsaved"`
  RawSaved int64 `json:"raw_saved"`
  Minutes int64 `json:"minutes"`
@@ -131,7 +135,7 @@ func Open(path string)(*Store,error){
  db,e:=sql.Open("sqlite",path);if e!=nil{return nil,e}
  db.SetMaxOpenConns(1);db.SetMaxIdleConns(1)
  ctx,cancel:=context.WithTimeout(context.Background(),15*time.Second);defer cancel()
- for _,q:=range []string{"PRAGMA journal_mode=WAL","PRAGMA synchronous=FULL","PRAGMA busy_timeout=5000","PRAGMA foreign_keys=ON"} {
+ for _,q:=range []string{"PRAGMA auto_vacuum=INCREMENTAL","PRAGMA journal_mode=WAL","PRAGMA synchronous=FULL","PRAGMA busy_timeout=5000","PRAGMA foreign_keys=ON"} {
   if _,e=db.ExecContext(ctx,q);e!=nil{db.Close();return nil,e}
  }
  var version int
@@ -203,7 +207,9 @@ func (s *Store) Finalize(ctx context.Context,now time.Time)error {
  cutoff:=now.UTC().Add(-Grace).UnixMilli()
  // Find only completed minute buckets containing unsaved observations.
  rows,e:=s.db.QueryContext(ctx,`SELECT DISTINCT effective_at_ms/60000*60000 FROM raw_samples
- WHERE saved=0 AND effective_at_ms+60000<=? ORDER BY 1 LIMIT 128`,cutoff)
+ WHERE saved=0 AND effective_at_ms/60000*60000+60000<=?
+ AND NOT EXISTS (SELECT 1 FROM aggregates a WHERE a.resolution_seconds=60 AND a.period_start_ms=raw_samples.effective_at_ms/60000*60000)
+ ORDER BY 1 LIMIT 128`,cutoff)
  if e!=nil{return e}
  var minutes []int64
  for rows.Next(){var m int64;if e=rows.Scan(&m);e!=nil{break};minutes=append(minutes,m)}
@@ -211,7 +217,7 @@ func (s *Store) Finalize(ctx context.Context,now time.Time)error {
  for _,m:=range minutes{if e=s.minute(ctx,m,now.UTC().UnixMilli());e!=nil{return e}}
  // Finalize only 900s windows whose end has passed the same grace.
  rows,e=s.db.QueryContext(ctx,`SELECT DISTINCT period_start_ms/900000*900000 FROM aggregates
- WHERE resolution_seconds=60 AND period_start_ms+900000<=? ORDER BY 1 LIMIT 32`,cutoff)
+ WHERE resolution_seconds=60 AND period_start_ms/900000*900000+900000<=? ORDER BY 1 LIMIT 32`,cutoff)
  if e!=nil{return e}
  var quarters []int64
  for rows.Next(){var q int64;if e=rows.Scan(&q);e!=nil{break};quarters=append(quarters,q)}
@@ -290,7 +296,7 @@ func fileBytes(path string)int64 {st,e:=os.Stat(path);if e!=nil{return 0};return
 func (s *Store) Status(ctx context.Context,now time.Time)(StorageStatus,error){
  st:=StorageStatus{AgentID:s.id,DBBytes:fileBytes(s.path),WALBytes:fileBytes(s.path+"-wal"),SHMBytes:fileBytes(s.path+"-shm"),RetentionCutoffMS:now.UTC().Add(-Retention).UnixMilli()}
  var stat syscall.Statfs_t
- if e:=syscall.Statfs(filepath.Dir(s.path),&stat);e==nil{st.FilesystemFreeBytes=stat.Bavail*uint64(stat.Bsize)}
+ if e:=syscall.Statfs(filepath.Dir(s.path),&stat);e==nil{st.FilesystemFreeBytes=stat.Bavail*uint64(stat.Bsize);st.FilesystemTotalBytes=stat.Blocks*uint64(stat.Bsize)}
  items:=[]struct{query string;dest *int64}{
   {`SELECT count(*) FROM raw_samples WHERE saved=0`,&st.RawUnsaved},
   {`SELECT count(*) FROM raw_samples WHERE saved=1`,&st.RawSaved},
@@ -307,6 +313,12 @@ func (s *Store) Status(ctx context.Context,now time.Time)(StorageStatus,error){
  var oldest sql.NullInt64
  if e:=s.db.QueryRowContext(ctx,`SELECT min(period_start_ms) FROM aggregates WHERE resolution_seconds=900 AND persisted_at_ms IS NULL`).Scan(&oldest);e!=nil{return st,e}
  if oldest.Valid{st.OldestPendingMS=&oldest.Int64}
+ if e:=s.db.QueryRowContext(ctx,`SELECT count(*) FROM raw_samples r WHERE r.saved=0 AND EXISTS (SELECT 1 FROM aggregates a WHERE a.resolution_seconds=60 AND a.period_start_ms=r.effective_at_ms/60000*60000)`).Scan(&st.LateRaw);e!=nil{return st,e}
+ var freePages,pageSize int64
+ if e:=s.db.QueryRowContext(ctx,"PRAGMA freelist_count").Scan(&freePages);e!=nil{return st,e}
+ if e:=s.db.QueryRowContext(ctx,"PRAGMA page_size").Scan(&pageSize);e!=nil{return st,e}
+ st.SQLiteFreePageBytes=freePages*pageSize
+ if e:=s.db.QueryRowContext(ctx,"PRAGMA auto_vacuum").Scan(&st.SQLiteAutoVacuumMode);e!=nil{return st,e}
  return st,nil
 }
 func (s *Store) Cleanup(ctx context.Context,now time.Time,dry bool,limit int)(CleanupResult,error){
@@ -334,6 +346,9 @@ func (s *Store) Cleanup(ctx context.Context,now time.Time,dry bool,limit int)(Cl
  dest:=[]*int64{&res.Raw,&res.Minutes,&res.Finals}
  for i,q:=range queries {x,e:=tx.ExecContext(ctx,q.sql,q.args...);if e!=nil{return res,e};n,e:=x.RowsAffected();if e!=nil{return res,e};*dest[i]=n}
  if e=tx.Commit();e!=nil{return res,e}
+ // Bounded best-effort page reclaim; never treat DELETE count as reclaimed disk bytes.
+ _,_ = s.db.ExecContext(ctx,"PRAGMA incremental_vacuum(200)")
+ _,_ = s.db.ExecContext(ctx,"PRAGMA wal_checkpoint(PASSIVE)")
  res.DBBytesAfter=fileBytes(s.path)
  return res,nil
 }
