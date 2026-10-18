@@ -2,6 +2,7 @@ package collector
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -17,5 +18,28 @@ func TestCPUGuestExcluded(t *testing.T) {
 	m, e := usage(a, b)
 	if e != nil || math.Abs(m["total_pct"]-40) > 0.01 {
 		t.Fatalf("CPU: %v %v", m, e)
+	}
+}
+
+func TestDiskstatsMalformedInputFailsClosed(t *testing.T) {
+	tests := []string{
+		"8 0 sda 1 2 3",
+		"8 0 sda 1 2 nope 4 5 6 7 8 9 10",
+		"8 0 sda 1 2 36028797018963968 4 5 6 7 8 9 10",
+	}
+	for _, input := range tests {
+		if _, err := diskFrom(strings.NewReader(input)); err == nil {
+			t.Errorf("invalid diskstats accepted: %q", input)
+		}
+	}
+}
+
+func TestDiskstatsValidSectorsConvertedToBytes(t *testing.T) {
+	got, err := diskFrom(strings.NewReader("8 0 sda 1 2 3 4 5 6 7 8 9 10\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["sda"] != [2]uint64{1536, 3584} {
+		t.Fatalf("unexpected disk I/O counters: %v", got)
 	}
 }
