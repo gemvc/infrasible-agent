@@ -60,3 +60,9 @@ Development is **Agent-first and vertical-slice driven**: CPU/Memory/Network -> 
 ## Relationship with Infrasible
 
 This repository contains **only** the standalone Linux Agent. It does not include the proprietary Infrasible desktop application, local SSH credential vault, inventory, or UI. Changes here do not alter the existing SSH connection implementation.
+
+### Desktop operator management (approved scope; not yet implemented)
+
+The Agent is installed/administered by an authorized human using existing SSH/Ansible tooling, including the Infrasible Monitoring Desktop. The unattended Agent **does not require Desktop to remain open**, and does not expose a new inbound management HTTP service. Operators manage the single versioned `/etc/infrasible-agent/config.json`; validated atomic reload and explicit restart/effective-config status are target features.
+
+Configuration will distinguish **monitored-host alert thresholds** (CPU, RAM and filesystem use, evaluated/shown by Desktop) from **Agent resource limits** (CPU/RAM systemd/cgroup ceilings applied by privileged operator tooling, plus a disk-storage budget that cannot override Pending protection). The Desktop can inspect Agent SQLite/DB-WAL space, counts of safe-to-clean old data and Pending records, and invoke narrow dry-run/safe-cleanup local maintenance over SSH. Unsaved raw and unACKed final records are never deleted by ordinary cleanup. These are **design requirements only**, not commands supported by the historical v0.1.0 CLI or shipped Desktop features. See design docs and MGMT-01–09 acceptance additions.

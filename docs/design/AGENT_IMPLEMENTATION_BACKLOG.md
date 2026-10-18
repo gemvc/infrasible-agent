@@ -393,3 +393,14 @@ Definition of Done: <CI link, tests, logs, review approvals, documentation>
 5. Require small PRs, review of real file/line impacts, explicit fresh-install/schema-version handling and evidence. This file is documentation; **no Agent code, repository release, service or production server changes are authorized by it**.
 
 **Backlog completeness criterion:** Every mandatory product behavior has a ticket, acceptance ID, dependency, negative-path test and gate. Anything needed to ship but missing here is a scope blocker to add through reviewed backlog change—not an implicit “developer choice.”
+
+## Desktop-controlled SSH configuration and storage maintenance — scope extension (2026-10-18)
+
+**Status: BACKLOG / NOT IMPLEMENTED; G00 unchanged.** Operator installs Agent with any SSH-capable workflow and uses existing Desktop SSH/Ansible to edit the one versioned Agent config, set host alert thresholds and desired Agent resource limits, inspect local SQLite/disk occupancy, and request safe cleanup. This is **not** an inbound management API, new SSH core, second database, daemon alert engine or new runtime service. Desktop evaluates host CPU/RAM/filesystem alert thresholds; Linux systemd/cgroup enforces authorized Agent CPU/RAM ceilings via privileged SSH/Ansible actions. Storage pressure budget never authorizes discarding Pending data.
+
+- **P00 / contract:** Review new MGMT-01–09 cases in the acceptance matrix, define supported config keys/ranges/revision model and native authorization scope; assign permanent AC IDs at gate review. External Desktop UX/threshold interpretation is a separate owner sign-off.
+- **P02 / storage:** Implement storage inventory from existing tables and SQLite/file metadata; exact record counts, qualified estimated bytes, 60-day ACKed eligibility, Pending/unsaved protection; dry-run and bounded guarded cleanup/recovery tests. No fourth table or generic SQL admin endpoint.
+- **P06/P10 / configuration and packaging:** Define versioned config validation, safe atomic replacement, effective revision and reload/restart diagnostics; add narrowly scoped **local** CLI for operator use over existing SSH. Add operator-owned systemd drop-in provisioning for CPUQuota/MemoryMax and confirm effective limits; Agent remains non-root and self-contained.
+- **P11 / acceptance:** Prove MGMT-01–09 with filesystem race, unauthorized caller, malformed config, crash, stale alert quality, OOM/throttle, ENOSPC, WAL checkpoint, 1Hz nonblocking and Desktop-disconnected fixtures. Keep 128MB/5%-core DEC-08 performance targets separate from operator-selected hard ceilings.
+
+No executable daemon/local CLI, Desktop UI, alert notifications, package updates or deployment is claimed by this documentation change.
