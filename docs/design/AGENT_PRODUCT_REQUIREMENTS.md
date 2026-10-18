@@ -6,6 +6,18 @@
 **Scope:** standalone, open-source Linux Agent in `gemvc/infrasible-agent`. **Source baseline:** `main@8b43c8a20d3a00fb030634c46d4677eaf52661ed` (current source is legacy v0.1.0).
 **Change authority:** owner explicitly approved DEC-01–11 and the reviewed engineering resolutions on 2026-10-18, then authorized repository/backlog documentation updates. This does **not** authorize runtime implementation, changes to Transible Desktop/SSH, other services, production deployments, releases, or a license change without legal clearance.
 
+## Existing source code policy — reference only (owner directive 2026-10-18)
+
+The code presently in this repository, including the historical v0.1.0 CLI collectors, commands, tests, CI and release tooling, is **reference/example material only and is not the Infrasible Monitoring Agent v2 product**. No existing implementation, module, public command, behavior, package layout or compatibility contract is mandatory for the new product merely because it exists in the repository.
+
+During implementation, examine each existing source file/module on its technical merits against this approved final architecture, security requirements, quality standards and acceptance tests:
+
+- **KEEP** only code that is demonstrably suitable, correct, secure and maintainable for the new daemon, with relevant tests; adapt/refactor it where warranted.
+- **REMOVE** unsuitable, obsolete, incompatible, unnecessary or misleading historical/reference code rather than preserving it to maintain artificial backwards compatibility.
+- **REPLACE/IMPLEMENT** missing functionality according to the final design and its test gates. Do not assume historical code has been validated for this architecture.
+
+There are no existing production consumers, installations or data requiring v0.1.0 migration or compatibility. Removal/reuse decisions belong to the separately authorized implementation phase, not this documentation update. This rule does not weaken requirements for deliberate audit, regression evidence, clean security boundaries, or approved implementation gates. **The canonical v2 design and acceptance criteria win over example code whenever they differ.**
+
 ## 1. Outcome, users and operational journeys
 
 A small standalone Linux daemon runs a nominal **1 Hz frame/scheduler** with **independent per-metric collection cadences**, durably stages real observations with their measurement time/quality/freshness, makes UTC-aligned 1m and 15m summaries with per-metric coverage, sends fresh Live frames to a stateless Bridge, and uploads only immutable final 15m to a distinct Persistence API. The Agent can be installed by Transible through existing SSH or provisioned independently; it never polls SSH per second.
