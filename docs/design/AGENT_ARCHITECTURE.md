@@ -9,11 +9,11 @@ Monitored Linux host
 +---------------------------------------------------------------------+
 | infrasible-agent (one non-root systemd-supervised daemon process)   |
 |  lifecycle/health + versioned endpoint config + local identity     |
-|  monotonic 1Hz scheduler -> read-only Linux collector               |
+|  monotonic 1Hz frame -> due metric collectors (1/5/30s)               |
 |                     |                    |                          |
 |        SQLite single controlled writer   +-- bounded Live buffer   |
 |        3 application tables              |     WSS/mTLS client     |
-|        raw(1s) -> minute(60s) -> final(900s)                        |
+|        raw frames(1s) -> per-metric minute(60s) -> final(900s)                        |
 |                                |                                    |
 |                     oldest pending immutable final                   |
 |                                +-- HTTPS/mTLS Persistence client     |
@@ -40,16 +40,16 @@ The Agent repository may implement **mock boundary contracts/tests only**, never
 | Component | Responsibility | Forbidden coupling |
 |---|---|---|
 | Main daemon / Supervisor | Startup/shutdown, signals, identity/config readiness, resource health and worker lifetime | CLI v1 stdout stream or per-tick SSH |
-| Linux collector | Testable parsers for CPU/mem/load/filesystems/network, rate/quality metadata and bounded entity cardinality | Network delivery or mutating host |
-| Monotonic scheduler | Schedule 1000ms ticks, measure actual duration, skip rather than fabricate missed ticks, assign immutable sample ID | Unbounded queue/timer goroutine per tick |
+| Linux collector | Small built-in Go metric modules; CPU/Network/Memory/Disk-I/O 1s, Load 5s, Filesystem capacity 30s, metadata on startup/change; genuine timestamps/units/status/quality and bounded entity cardinality | Network delivery, mutating host or unbounded plugin runtime |
+| Monotonic scheduler | One 1000ms **frame** tick with deterministic due plan for metric families; measured actual elapsed, unique frame IDs, skip rather than fabricate overrun ticks | Separate unbounded timer/goroutine for each metric, re-stamping cached old readings |
 | Controlled SQLite writer | Serialize all DB mutations; `WAL` + `synchronous=FULL`; transactions and bounded BUSY retry | Waiting on Bridge or central API while holding DB transaction |
-| Rollup manager | Finalize minute after 120s grace; construct 15m only after source minute outcomes; stable hashes/lineage | Rewriting finalized/ACKed historical payload |
+| Rollup manager | Finalize minute after 120s grace; compute per-metric scheduled/valid/failed coverage and freshness-bounded averages; construct 15m from immutable minute sufficients | Treating every slow metric as if observed 60/900 times or rewriting final historical payload |
 | Live worker | Persistently connect WSS; consume bounded latest-only sample buffer; quality/drop counters | Raw/history replay or disk queue |
 | Persistence worker | Query oldest pending 900s row; HTTPS keep-alive, domain-bound idempotent ACK validation, atomic local marking | Sending 1s/60s or direct central DB access |
 | Endpoint manager | Parse one ordered JSON config, channel-specific eligibility/authz, independent active target/retry/failover | Treat independently stored domain as shared |
-| Health/maintenance | Evidence for lag, disk/WAL pressure, cert expiry, clock trust, corruption, rejected records and controlled cleanup | Secret disclosure, deleting unACKed final or unsaved raw |
+| Health/maintenance | From first slice expose collector due/fail/last-valid/age, clock trust, SQLite durability, channel health and pending/disk/WAL; controlled cleanup | Conflating process-running with healthy monitoring, hiding stale metrics or deleting protected rows |
 
-No additional Redis, JSONL, broker, microservice, queue DB or fourth application table. Queue for Persistence is a SQL predicate over `aggregates`.
+No additional Redis, JSONL, broker, microservice, queue DB, general plugin runtime, embedded AI/UI or fourth application table. No inbound public REST/listener and no server-configuration automation. Persistence Queue is a SQL predicate over `aggregates`. Delivery follows vertical, fault-tested increments within P01–P11 rather than partially completed features.
 
 ## 3. Source-grounded AS-IS versus TO-BE
 
@@ -59,19 +59,23 @@ Verified code corrections needed when implementation is separately approved: `cp
 
 ## 4. Time model and deterministic pipeline
 
-- One actual observation per scheduled tick (nominal 1 Hz). Capture `observed_at_utc` and monotonic measured elapsed time; a boot-unique/random stable ID prevents collisions on restarts and backward wall-clock steps.
+- One actual **raw frame per completed nominal 1Hz tick**. Only due metric families produce new observations; a frame's `observed_at_utc` is the frame time, while each new metric has its **own `measured_at_utc`**, validity and interval. A boot-unique/random frame ID prevents collisions on restarts/backward clock steps. No invented fresh reading on `not_due` ticks.
 - UTC periods are half-open `[start, end)`, 60s minutes and 900s quarters aligned to UTC epoch. Use one stored effective UTC attribution for each accepted raw sample; do not change it retroactively.
 - Clock-adjustment handling: compare monotonic versus UTC elapsed; a large wall clock step (initial engineering alert threshold 2s) marks `CLOCK_UNTRUSTED`, pauses finalization/delivery of ambiguous windows and records explicit quality/gap evidence. Treat clock-stability release as an observable transition, never assign ambiguous samples silently.
 - The minute `[12:00,12:01)` may finalize **no earlier than 12:03 UTC** (minute end + 120s) if clock trusted and every relevant admitted sample is durably processed. Frozen minutes are immutable; samples emerging after grace are not silently merged, and the late-drop/error count is exposed.
 - A 900s quarter `[12:00,12:15)` cannot finalize until all its participating minute outcomes are immutable; with grace, no earlier than **12:17 UTC** in the ordinary case.
-- Per metric and per entity, coverage is measured: observed, valid, missing/invalid, expected slots (nominal 60/900), actual elapsed, quality flags. Zero is a measurement only if read/parse succeeded. A 40/60 fixture must remain 40/60. A spike is preserved as `max`/`peak_at` independent of average. Durations/weights for gauges must be defined per metric.
-- Counter metrics require delta/time semantics; reset/hotplug invalidates the corresponding rate interval rather than producing negative spikes. For filesystem/interface churn use stable entity keys and explicit missing/unavailable quality.
+- **Coverage has two independent denominators:** base frame slots (nominal 60/900) and **metric-specific scheduled opportunities** (uninterrupted minute: 60 at 1s, 12 at 5s, 2 at 30s). Record due/attempted/valid/failed/missing per metric and entity, with original measurement time/quality. `not_due` ticks do not count missing. A 40/60 CPU fixture and 8/12 Load fixture remain distinct. A peak is the maximum **actually measured** (not an unobservable between-check spike). Gauge weighting must be freshness-bounded and transparently described.
+- Counter metrics (Network/Disk I/O) use deltas over **their own real monotonic elapsed time**; reset/hotplug invalidates a rate interval. CPU/memory changes and mount/interface churn have stable entity keys and typed errors. Static metadata is collected at startup/change, not copied into every frame as fresh.
 - Empty windows occurring **while Agent is running** may be represented as zero-coverage outcomes with missing-data flags; **fully offline host time must not be fabricated as collected monitoring data**. Recovery scans unfinished known windows with bounded work after restart.
 
 ```text
 clock trust + sample admitted
-    -> raw_samples(saved=0) committed (1Hz; durable first)
+    -> due metric collector observations (1s / 5s / 30s; genuine measured_at)
+    -> 1Hz raw frame saved=0, containing only newly observed/failed due fields
+    -> optional old-value cache for *Live display only*, separate age/freshness
+    -> SQLite frame commit (durable first)
     -> 60s [start,end) + 120s grace, all admitted writes drained
+    -> per-metric scheduled/attempted/valid/missing coverage + actual peak/last
     -> BEGIN IMMEDIATE; INSERT immutable minute; UPDATE exact source raw saved=1; COMMIT
     -> batched DELETE raw WHERE saved=1 (only)
     -> 15 immutable minute outcomes, including gaps/partial quality
@@ -85,9 +89,28 @@ clock trust + sample admitted
 
 **Crash invariant:** A committed minute and its source `saved` flags are all-or-none. A quarter is fully committed before deleting minute sources. `persisted_at` is never based on HTTP status alone. Restarts re-query SQL for pending finals; no persisted in-flight queue.
 
+### 4.1. Due schedule, freshness and fan-out
+
+**Owner-approved default metric policy:** CPU, Network, Memory/Swap, Disk I/O **1s**; Load **5s**; Filesystem capacity **30s**; static metadata **startup/change**. These are genuine collection rates within one common 1Hz frame scheduler, not different independent daemons. Keep one bounded collector execution path; slow reads are bounded by deadlines and cannot spawn unbounded parallel workers or delay database transactions indefinitely.
+
+At each scheduled frame, compute the due set for each family using the **monotonic cadence profile** and log enough profile/phase/version information to reconstruct planned opportunities across recovery. For the metrics due:
+1. Start a bounded read, record start/end monotonic duration and \`measured_at_utc\`, normalize units and entity IDs.
+2. Classify each due attempt as \`valid\`, \`missing\`, \`error\`, \`counter_reset\` or \`unsupported\` with structured per-metric diagnostics; a real zero is \`valid(0)\`, not a missing sentinel.
+3. Commit exactly one raw frame for the actual tick, with newly measured/failed **due** metric events in the row JSON; \`not_due\` is implicit from the versioned due plan or explicit quality marker, never a new value.
+4. Independently offer the current frame to the bounded Live Worker. Optional in-memory last-known display state retains original time and \`freshness\` metadata, never a fresh measurement or SQLite history row.
+
+The collector's \`observation_status\` and displayed \`freshness\` are **orthogonal**: a reading can be a previously valid cached observation within freshness TTL and yet **not be newly measured on this frame**. Freshness TTL starts with \`2 × metric cadence + allowed jitter margin\` (per-metric tunable, bounded and versioned). \`stale\` is a presentation/health state derived from original measurement age; it does not reenter raw or count in aggregation.
+
+**Reference healthy full minute:** frame=60 due, CPU=60, Load=12, capacity=2; quarter=900/900/180/30. At startup/phase changes, gaps, tick overruns or clock uncertainty, per-metric expected/scheduled/actual attempts must be computed from documented cadence phase and known host uptime. Time with no running Agent is marked unobserved/gap, not synthetically populated. The global \`expected_slots=60/900\` schema still means *1Hz frame slots*, not every collector's opportunity count.
+
+**Aggregation semantics:** per-metric observation count and error count are based on actual due opportunities. For gauges, only a explicitly defined observed or bounded freshness-valid interval may contribute duration-weighted estimates; label last-observation-held estimates as such and do not carry across stale or clock-untrusted gaps. Peak/min/max/last refer to actual measurements and timestamps; 30s filesystem collection cannot claim to have detected a 1-second unobserved filesystem spike. Counter rates use valid true delta/elapsed, preserve resets/wrap as quality. Quarter aggregation merges minute sufficient statistics **without multiplying slower observations by frame count**. Both Live JSON and final 900s envelope carry per-metric quality/measurement time/coverage suitable for their consumers.
+
+**Health from first vertical slice:** record each metric's last due attempt, last valid time, age, misses/errors, unsupported state, scheduler lateness and raw-commit success; keep Live and Persistence status separate. A running process is not proof that every metric is healthy.
+
+
 ## 5. State machines and resource isolation
 
-**Sampler:** `INIT -> SCHEDULED -> COLLECTING -> RAW_COMMIT -> SCHEDULED`; on read error, commit partial/quality if storage works; on scheduler overrun skip missing ticks with gap evidence; on DB error enter STORAGE_DEGRADED without reporting durable success.
+**Sampler:** `INIT -> FRAME_DUE -> METRIC_DUE_SELECTION -> COLLECTING_DUE_ONLY -> RAW_COMMIT -> FRAME_DUE`; on source error, commit partial/typed quality if storage works; an unchanged cached value must never masquerade as a newly observed raw value. On overrun skip missed ticks (account for absent opportunities) without unbounded catch-up; on DB failure report `STORAGE_DEGRADED` without claiming durability.
 
 **Minute:** `OPEN -> GRACE -> FINALIZING -> FINAL`; forced stop before commit leaves `OPEN/GRACE` retriable, committed final immutable; late-after-freeze is counted/quarantined in health, never edits a final row.
 
