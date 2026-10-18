@@ -26,14 +26,18 @@ for target in amd64 arm64 armv7 armv6; do
   dir="$(mktemp -d)"
   install -Dm755 "dist/$binary" "$dir/infrasible-agent"
   cp LICENSE "$dir/LICENSE"
-  tar -C "$dir" -czf "dist/infrasible-agent_${VERSION}_linux_${target}.tar.gz" infrasible-agent LICENSE
+  cp packaging/infrasible-agent.service "$dir/infrasible-agent.service"
+  cp packaging/config.example.json "$dir/config.example.json"
+  tar -C "$dir" -czf "dist/infrasible-agent_${VERSION}_linux_${target}.tar.gz" infrasible-agent LICENSE infrasible-agent.service config.example.json
   rm -rf "$dir"
   if [[ -n "$debarch" ]] && command -v dpkg-deb >/dev/null 2>&1; then
     pkg="$(mktemp -d)"
     install -Dm755 "dist/$binary" "$pkg/usr/bin/infrasible-agent"
     mkdir -p "$pkg/DEBIAN" "$pkg/usr/share/doc/infrasible-agent"
     cp LICENSE "$pkg/usr/share/doc/infrasible-agent/copyright"
-    printf 'Package: infrasible-agent\nVersion: %s\nSection: admin\nPriority: optional\nArchitecture: %s\nMaintainer: Infrasible Maintainers <maintainers@users.noreply.github.com>\nDescription: Read-only Linux host monitoring agent\n' "$VERSION" "$debarch" > "$pkg/DEBIAN/control"
+    install -Dm644 packaging/infrasible-agent.service "$pkg/usr/lib/systemd/system/infrasible-agent.service"
+    install -Dm644 packaging/config.example.json "$pkg/usr/share/doc/infrasible-agent/config.example.json"
+    printf 'Package: infrasible-agent\nVersion: %s\nSection: admin\nPriority: optional\nArchitecture: %s\nMaintainer: Infrasible Maintainers <maintainers@users.noreply.github.com>\nDescription: Linux monitoring daemon with local SQLite\n' "$VERSION" "$debarch" > "$pkg/DEBIAN/control"
     dpkg-deb --build --root-owner-group "$pkg" "dist/infrasible-agent_${VERSION}_${debarch}.deb"
     rm -rf "$pkg"
   fi
@@ -47,11 +51,11 @@ if command -v rpmbuild >/dev/null 2>&1; then
 Name: infrasible-agent
 Version: $VERSION
 Release: 1
-Summary: Read-only Linux host monitoring agent
+Summary: Linux host monitoring daemon
 License: MIT
 BuildArch: x86_64
 %description
-Infrasible Linux monitoring agent. No background service or network listener.
+Infrasible Linux monitoring daemon with outbound mTLS channels and no inbound API.
 %prep
 %build
 %install
