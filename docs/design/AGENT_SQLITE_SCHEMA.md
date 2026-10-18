@@ -117,6 +117,27 @@ Watermarks must only advance after corresponding immutable row transactions and 
 - Spike/peak: retain max value and UTC first occurrence (tie-breaking deterministic) plus anomaly category/count; preserve per-entity data and high-cardinality caps.
 - Clock anomalies: compare wall UTC vs monotonic elapsed; initial engineering anomaly threshold 2s; quarantine/mark ambiguous attribution and suspend unsafe finalization until trusted, no retroactive mutation of frozen periods.
 
+### 4.1. JSON payload contract for independent metric schedules
+
+**Raw frame JSON:** the scalar SQL columns identify a real frame. Its metrics_json contains a sampling_profile_version and only *new* observations for metric families actually due in this frame, with each entry holding measured_at_ms, source/unit, stable entity key (where applicable), value and typed observation_status. Its quality_json holds the due-families set, due errors, the scheduler phase/version, clock quality and gaps. A family not due at a given frame may be absent or explicitly listed as not_due, **never present with a repeated value and a new measurement timestamp**. A last-known cache used by Live remains bounded memory, not raw_samples history. For example a 12:00:01 frame may contain fresh CPU, Memory, Network and Disk-I/O but *no* new 5-second Load or 30-second Filesystem value.
+
+**Aggregate JSON:** summary_json stores per metric/entity a *separate* record with sampling_profile_version, cadence_seconds, nominal_expected_opportunities, known_due_opportunities, attempts, valid_observations, invalid_or_failed_observations, explicit unobserved gaps, numerator/denominator coverage, last_measured_at_ms, measured min/max/last/peak_at_ms, and any sufficient weighted numerator plus valid_duration_ms. quality_json carries reset/error/unsupported reasons, stale-at-window-end/freshness indicators and clock quality. For a complete, uninterrupted 60-second window the denominators are CPU 60, Load 12, Filesystem capacity 2; a healthy 15-minute quarter gives CPU 900, Load 180 and capacity 30. If the process was offline, scheduling profile changed or UTC was untrusted, explicitly distinguish nominal opportunity, known due, and unobserved interval rather than inventing a collected sample.
+
+**Status model:** valid, missing, error, counter_reset, unsupported and not_due are collection/due events; stale is derived from an earlier actual measurement's age when viewed, **not another collection event**. Store original measured_at_ms and a metric-specific freshness_ttl_ms, default 2 × cadence + approved jitter allowance. A previously valid cached value still within TTL is *not a fresh observation on a later frame*. JSON null and a typed missing/error are distinct from numeric zero.
+
+**Per-metric computation examples (same minute):**
+
+| Family | Scheduled opportunities | Actually valid | Coverage | Correct behavior |
+|---|---:|---:|---|---|
+| CPU 1s | 60 | 40 | 40/60 | Retain one observed 1s spike in measured max and peak time; missing 20 not zero |
+| Load 5s | 12 | 8 | 8/12 | Do not label the 48 not_due frames as misses or duplicate old Load |
+| Filesystem capacity 30s | 2 | 2 | 2/2 | Two actual measurements only; no claim to know any 1s capacity spike |
+| Network counter 1s | 60 | 59 | 59/60 | One reset epoch invalidates rate, not a zero/negative traffic measurement |
+
+These are **individual synthetic fixtures**, not a claim that each metric's failure falls on a different frame. The tests must pin consistent frame IDs, actual timestamps, profile phase, counter resets and duration arithmetic. Profile changes must be applied prospectively with a versioned phase marker; final immutable records cannot be recalculated with a later profile.
+
+**1m/15m fidelity:** minute transaction includes only actually committed source-frame IDs and atomically marks those raw rows saved. The 15m transaction combines 15 finalized minute sufficient statistics, with per-metric opportunity counts and bounded gauge valid durations, preserving original measured peaks and gaps. Never multiply 5s or 30s observations by the 1Hz frame count. Central final payload includes the same per-metric quality/coverage so History can distinguish fresh, stale and partial information from truly idle values.
+
 ## 5. Minute finalization (atomic)
 
 **Eligible** only after `period_end + 120 seconds`, trusted clock, and draining all admitted/raw writes for that window. `[12:00:00,12:01:00)` normally becomes final no earlier than 12:03 UTC. Actual commit may be later.
