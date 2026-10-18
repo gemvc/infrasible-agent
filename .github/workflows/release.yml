@@ -34,10 +34,28 @@ jobs:
           [[ "$INPUT_VERSION" == "$source_version" ]] || { echo "Input version must match version.go on main"; exit 1; }
           git fetch origin main
           [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || { echo "Workflow must run at current main HEAD"; exit 1; }
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$INPUT_VERSION" >/dev/null 2>&1; then
-            echo "Release tag already exists"; exit 1
+          tag="v$INPUT_VERSION"
+          if git ls-remote --exit-code --refs origin "refs/tags/$tag" >/dev/null 2>&1; then
+            # Peel annotated tags: never compare the tag object SHA to a commit SHA.
+            git fetch --no-tags origin "refs/tags/$tag:refs/tags/$tag"
+            release_commit="$(git rev-parse "refs/tags/$tag^{commit}")"
+            git merge-base --is-ancestor "$release_commit" "$GITHUB_SHA" || {
+              echo "Existing release tag is not an ancestor of main"; exit 1;
+            }
+            echo "Using existing $tag at $release_commit"
+            echo "RELEASE_TAG_EXISTS=true" >> "$GITHUB_ENV"
+          else
+            release_commit="$GITHUB_SHA"
+            echo "RELEASE_TAG_EXISTS=false" >> "$GITHUB_ENV"
           fi
+          # Build and test the exact commit named by the release tag, never a newer main.
+          git checkout --detach "$release_commit"
+          tagged_version="$(sed -n 's/^const agentVersion = "\([^"]*\)"/\1/p' version.go)"
+          [[ "$INPUT_VERSION" == "$tagged_version" ]] || {
+            echo "Tagged source version mismatch"; exit 1;
+          }
           echo "RELEASE_VERSION=$INPUT_VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE_COMMIT=$release_commit" >> "$GITHUB_ENV"
       - name: Resolve dependencies
         run: |
           go mod tidy
@@ -54,14 +72,15 @@ jobs:
           bash scripts/package-linux.sh
           (cd dist && sha256sum -c SHA256SUMS)
           echo 'Daemon v2 packaging verified by tests; no legacy CLI smoke.'
-      - name: Create version tag at verified main commit
+      - name: Create tag only when absent
+        if: env.RELEASE_TAG_EXISTS == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh api "repos/$GITHUB_REPOSITORY/git/refs" \
             -f ref="refs/tags/v$RELEASE_VERSION" \
-            -f sha="$GITHUB_SHA"
+            -f sha="$RELEASE_COMMIT"
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "v$RELEASE_VERSION" dist/* --verify-tag --generate-notes --target "$GITHUB_SHA"
+        run: gh release create "v$RELEASE_VERSION" dist/* --verify-tag --generate-notes --target "$RELEASE_COMMIT"
