@@ -1,6 +1,6 @@
 # Legacy protocol — v0.1.0 AS-IS ONLY
 
-**Not the contract for the owner-approved daemon-only architecture.** This document records the shipped stdout/SSH protocol v1 for existing consumers and safe migration review; the new daemon deliberately removes these public CLI commands. Read [approved target wire/security contract](design/AGENT_PROTOCOL_AND_SECURITY.md) and [product decisions](design/AGENT_PRODUCT_REQUIREMENTS.md). Do **not** silently replace a binary serving a legacy Desktop v1 consumer.
+**Not the contract for the owner-approved daemon-only architecture.** This document records the shipped stdout/SSH protocol v1 for source provenance and collector reference only; the new daemon deliberately removes these public CLI commands. Read [approved target wire/security contract](design/AGENT_PROTOCOL_AND_SECURITY.md) and [product decisions](design/AGENT_PRODUCT_REQUIREMENTS.md). Do **not** silently replace a binary serving a legacy Desktop v1 consumer.
 
 # Infrasible Agent protocol v1.0
 
