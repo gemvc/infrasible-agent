@@ -174,7 +174,7 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 | AG-0303 | Commit one raw row per actual sample, including error/quality/coverage metadata, independent of any network status; control backpressure. | Offline ≥30 min with injected collector errors and network down: stored sample identity/time preserved, explicit missing spans, no memory growth from outbound queues. |
 | AG-0304 | Safe daemon startup/shutdown, status and test-clock injection; no old snapshot/stream public interface. | 1-hour soak + SIGTERM + restart verifies monotonic scheduler, no duplicate raw IDs, Desktop migration tracked independently. |
 
-**PROPOSED performance target, not approved SLO:** nominal 1s cadence, with quantile/jitter target and test host calibrated in P00. Missing samples are visible as `coverage` degradation, not silently filled.
+**APPROVED DEC-08 acceptance target:** nominal 1s cadence; schedule-start jitter P99 <=500ms; peak RSS <=128MB; mean CPU <=5% of one core on an explicitly documented reference workload. Benchmark calibration/native-platform qualification remains REQUIRED. Missing samples are visible as `coverage` degradation, never silently filled.
 
 **Gate G03:** AC-009–012 pass; 1-hour workload/partial-data evidence; no SSH reconnection per tick.
 
