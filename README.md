@@ -1,12 +1,12 @@
 # Infrasible Monitoring Agent
 
-**Current development version: 0.3.0 (daemon v2).** This repository contains a standalone Linux monitoring daemon written in Go. The daemon runs under systemd as a non-root user, measures Linux host metrics, keeps local SQLite history, and has outbound-only WSS Live and HTTPS Persistence clients. This version is an **implementation candidate, not production-certified**. There is no inbound HTTP management port.
+**Current development version: 0.3.1 (daemon v2).** This repository contains a standalone Linux monitoring daemon written in Go. The daemon runs under systemd as a non-root user, measures Linux host metrics, keeps local SQLite history, and has outbound-only WSS Live and HTTPS Persistence clients. This version is an **implementation candidate, not production-certified**. There is no inbound HTTP management port.
 
 ## Source of truth
 
 - [Installation](docs/INSTALLATION.md) — obtain verified CI artifacts, install systemd service and initialize the host.
-- [Configuration & Desktop connection workflow](docs/CONFIGURATION.md) — exact v0.3.0 JSON, existing-SSH setup sequence, Relay registration dependencies and operator controls.
-- [Actual v0.3.0 wire vs proposed Relay protocol](docs/design/AGENT_PROTOCOL_AND_SECURITY.md#12-v030-executable-wire-vs-target-protocol--integration-handoff) — implementer handoff and integration blockers.
+- [Configuration & Desktop connection workflow](docs/CONFIGURATION.md) — exact v0.3.1 JSON, existing-SSH setup sequence, Relay registration dependencies and operator controls.
+- [Actual v0.3.0/v0.3.1 wire vs proposed Relay protocol](docs/design/AGENT_PROTOCOL_AND_SECURITY.md#12-v030-executable-wire-vs-target-protocol--integration-handoff) — implementer handoff and integration blockers.
 - [Operations](docs/DAEMON_RUNBOOK.md) — health, storage inspection, safe cleanup and troubleshooting.
 - [Product requirements](docs/design/AGENT_PRODUCT_REQUIREMENTS.md), [Architecture](docs/design/AGENT_ARCHITECTURE.md), [SQLite contract](docs/design/AGENT_SQLITE_SCHEMA.md), [Network/security contract](docs/design/AGENT_PROTOCOL_AND_SECURITY.md), [Acceptance tests](docs/design/AGENT_ACCEPTANCE_AND_TEST_MATRIX.md), and [Backlog](docs/design/AGENT_IMPLEMENTATION_BACKLOG.md) — approved targets; **not all requirements are implemented or accepted**.
 
@@ -19,9 +19,9 @@ The implementation in source code takes precedence for *currently available comm
 - Local CLI: `run`, `config validate`, `health status`, `storage status`, `storage cleanup --dry-run` and `storage cleanup --safe`.
 - Initial mTLS-protected outbound WebSocket and HTTP clients, packaging for Linux amd64, arm64, armv7 and armv6, and an automated Go test/cross-build pipeline.
 
-## Development milestone 0.3.0
+## Development milestone 0.3.1
 
-This milestone incorporates follow-up fixes to operator identity inspection, scalar metric due counting, malformed diskstats handling and filesystem statfs error reporting. It is a development milestone only; central interoperability, PKI lifecycle, complete metric quality and production acceptance remain unverified.
+This patch release builds on v0.3.0 with per-family raw/minute/15-minute quality and cadence coverage, transactional rollup failure regression tests, read-only operator database safety, a safer mTLS private-key read path, and correct handling of valid zero `MemAvailable`. The protocol major/minor and `config_version` stay unchanged. It is a development milestone only; central interoperability, PKI lifecycle, full acceptance and production readiness remain unverified.
 
 ## Not yet production-ready
 
