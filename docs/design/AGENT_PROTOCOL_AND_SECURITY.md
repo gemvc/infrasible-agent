@@ -153,6 +153,8 @@ A single active WSS per Agent/channel, independent of Persistence. Queue initial
 
 **Canonical hash definition (engineering-selected, external approval pending):** build the immutable submission object with all required identity, period, schema, quality and metrics fields **but omit only the `payload_sha256` member**; serialize it to canonical UTF-8 JSON following **RFC 8785 (JCS)**, then compute SHA-256 of those canonical bytes. Reject NaN/Infinity and invalid/non-representable numbers. Add `payload_sha256` to the envelope and store the **exact transmitted JSON bytes** in SQLite `wire_payload` for byte-identical retries. The transmitted `wire_payload` **is not itself hashed** because it contains its own digest. API mocks and central producer/consumer must use the same normative fixture and canonicalization; different hash for same logical `record_id` is a permanent conflict. Store/keep old v2 wire payload while pending across upgrades; do not regenerate it under a new schema.
 
+**Numeric precision for JSON/JCS:** represent large unsigned Linux counters (e.g., rx/tx bytes and packet totals) as exact unsigned **decimal strings** in wire metrics to avoid IEEE-754 precision loss beyond 2^53−1. Validate the decimal grammar/range and define signedness/units in schema; bounded floats may represent percentages and load. Preserve this in canonical hash fixtures, including values exceeding 9,007,199,254,740,991. This applies to the external Bridge/API contracts as well.
+
 **ACK example**:
 
 ```json
