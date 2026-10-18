@@ -1,14 +1,14 @@
-# Linux installation — Infrasible Agent v0.2.0
+# Linux installation — Infrasible Agent v0.3.0
 
-> **Pre-production testing only.** v0.2.0 is an implementation candidate. It can collect and aggregate locally with no monitoring endpoints; it is not a fully integrated central monitoring deployment.
+> **Pre-production testing only.** v0.3.0 is an implementation candidate. It can collect and aggregate locally with no monitoring endpoints; it is not a fully integrated central monitoring deployment.
 
 ## Download a built artifact
 
 Use the latest **successful main** [Agent CI run](https://github.com/gemvc/infrasible-agent/actions/workflows/ci.yml), open its **Artifacts** section and download `linux-packages` ZIP. A successful CI run produces the native Linux executables, tarballs, Debian packages on amd64/arm64/armhf, an x86_64 RPM, `SHA256SUMS` and per-binary `.sha256` files. **CI artifacts are not automatically a GitHub Release.**
 
-When a manually approved `v0.2.0` release has been published, its verified assets can instead be obtained from [Releases](https://github.com/gemvc/infrasible-agent/releases). Never install the old `v0.1.0` asset expecting daemon-v2 functionality.
+When a manually approved `v0.3.0` release has been published, its verified assets can instead be obtained from [Releases](https://github.com/gemvc/infrasible-agent/releases). Never install the old `v0.1.0` asset expecting daemon-v2 functionality.
 
-Match the Linux OS architecture using `uname -m` and `dpkg --print-architecture`. Use `infrasible-agent_0.2.0_amd64.deb` on Debian/Ubuntu amd64 or `infrasible-agent_0.2.0_arm64.deb` on arm64. On other Linux targets use the matching tarball; generated RPMs only package the binary, not systemd/configuration.
+Match the Linux OS architecture using `uname -m` and `dpkg --print-architecture`. Use `infrasible-agent_0.3.0_amd64.deb` on Debian/Ubuntu amd64 or `infrasible-agent_0.3.0_arm64.deb` on arm64. On other Linux targets use the matching tarball; generated RPMs only package the binary, not systemd/configuration.
 
 Verify checksums for the downloaded matching package from `SHA256SUMS` when present. SHA-256 alone does **not** authenticate the publisher or protect against a compromised CI account.
 
@@ -17,7 +17,7 @@ Verify checksums for the downloaded matching package from `SHA256SUMS` when pres
 After downloading/extracting artifacts to the Linux machine:
 
 ```sh
-sudo apt install ./infrasible-agent_0.2.0_amd64.deb
+sudo apt install ./infrasible-agent_0.3.0_amd64.deb
 sudo useradd --system --home-dir /var/lib/infrasible-agent --shell /usr/sbin/nologin infrasible-agent
 sudo install -d -m 0750 -o infrasible-agent -g infrasible-agent /var/lib/infrasible-agent
 sudo install -d -m 0750 /etc/infrasible-agent
