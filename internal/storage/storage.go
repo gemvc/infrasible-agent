@@ -292,6 +292,35 @@ func flatten(summary map[string]Statistic, key string, v any, at int64) {
 // names. An omitted (not-due) family is not a failed scheduled observation.
 type QualityCounts map[string]map[string]int64
 
+// expected_due and unobserved_due are period-level coverage counters rather
+// than sample statuses. Missing frames must not be fabricated as observations.
+var metricCadenceSeconds = map[string]int64{
+	"cpu": 1, "memory": 1, "network": 1, "disk_io": 1,
+	"load": 5, "filesystem": 30,
+}
+
+func completeCoverage(quality QualityCounts, seconds int64) {
+	for family, cadence := range metricCadenceSeconds {
+		counts := quality[family]
+		if counts == nil {
+			counts = map[string]int64{}
+			quality[family] = counts
+		}
+		expected := seconds / cadence
+		var observed int64
+		for status, count := range counts {
+			switch status {
+			case "expected_due", "unobserved_due", "not_due":
+				continue
+			default:
+				observed += count
+			}
+		}
+		counts["expected_due"] = expected
+		counts["unobserved_due"] = max(int64(0), expected-observed)
+	}
+}
+
 func mergeQuality(dst, src QualityCounts) {
 	for family, statuses := range src {
 		if dst[family] == nil {
@@ -447,6 +476,7 @@ func (s *Store) minute(ctx context.Context, start, now int64) error {
 		return e
 	}
 	lin := digest(payload)
+	completeCoverage(quality, 60)
 	qualityJSON, e := json.Marshal(quality)
 	if e != nil {
 		return e
