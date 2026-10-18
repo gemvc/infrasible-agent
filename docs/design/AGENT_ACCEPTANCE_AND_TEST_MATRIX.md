@@ -1,7 +1,7 @@
 # Infrasible Monitoring Agent — Acceptance and Test Matrix
 
 **Status:** source-grounded acceptance baseline approved for documentation; **NOT EXECUTED** for new architecture. Release requirements are not test results. Existing executable baseline covers only legacy v0.1.0 code/CI.
-**Owner decisions:** DEC-01–DEC-11 approved in conversation 2026-10-18. **Repository reference:** `main@8b43c8a20d3a00fb030634c46d4677eaf52661ed`.
+**Owner decisions:** DEC-01–DEC-11 and final owner-approved refinements **AD-01 (multi-rate), AD-02 (quality/freshness), AD-03 (lean daemon/early health)** on 2026-10-18. **Repository reference:** `main@8b43c8a20d3a00fb030634c46d4677eaf52661ed`.
 **Source of truth for acceptance:** THIS file; `AGENT_IMPLEMENTATION_BACKLOG.md` is the single phased execution plan and refers to stable IDs here.
 
 ## 1. Test levels and proof format
@@ -13,25 +13,25 @@
 
 | P00 AC | Given / When / Then | Type |
 |---|---|---|
-| P00-AC-01 | Given owner DEC-01–11, when checked against every canonical doc, then all decisions have identical outcomes and recorded approval. | REV P00 |
+| P00-AC-01 | Given owner DEC-01–11 and AD-01–03, when checked across all canonical docs and backlog, then 1Hz frames with independent metric cadences/quality are consistent with all locked decisions, including unchanged 120s grace. | REV P00 |
 | P00-AC-02 | Given current baseline SHA and v0.1.0 code, when inventory is reviewed, then AS-IS is separated from all proposed daemon behavior. | REV P00 |
 | P00-AC-03 | Given DEC-07, when auditing P01/P10/AC criteria, then no new daemon v1 CLI preservation is required and a versioned Desktop migration gate exists. | CT P00 |
-| P00-AC-04 | Given proposed DDL, when schema inspected, then exactly three application tables and all required keys/constraints/indexes exist. | SQL P00 |
+| P00-AC-04 | Given proposed DDL, when schema reviewed, then exactly three application tables exist and frame-level slots are distinguished from per-metric 1s/5s/30s opportunities stored within JSON, with enforceable transactional invariants. | SQL P00 |
 | P00-AC-05 | Given a crash before/mid/after 60s and 900s transactions, when state transitions are paper-walked, then saved/rollup/persisted predicates remain atomic and idempotent. | FT-REVIEW P00 |
-| P00-AC-06 | Given UTC 120s grace/clock rollback/partial observations, when window timelines simulated, then immutable boundaries and no fabricated values hold. | UT-REVIEW P00 |
+| P00-AC-06 | Given UTC 120s grace, clock rollback and mixed 1s/5s/30s metric schedules, when a full minute, partial minute and 15m are simulated, then immutable boundaries, schedule-phase quality and metric-specific denominators are exact; no cached value is fabricated as fresh. | UT-REVIEW P00 |
 | P00-AC-07 | Given 61-day offline and ENOSPC, when retention reviewed, then unACKed rows are never silently deleted and lost new samples are reported honestly. | FT-REVIEW P00 |
-| P00-AC-08 | Given slow/disconnected Bridge, when Live contract reviewed, then bounded drops, fresh-only reconnect and no history storage are explicit. | CT P00 |
+| P00-AC-08 | Given slow/disconnected Bridge and 30s-old cached capacity, when Live contract reviewed, then bounded drops, fresh-frame delivery, preserved original metric timestamp/age/stale status, no new cached observation and no historical storage are explicit. | CT P00 |
 | P00-AC-09 | Given HTTP 200 without valid durable ACK, when protocol reviewed, then persisted_at remains NULL and stable replay ID/hash are required. | CT P00 |
 | P00-AC-10 | Given central commit-success/ACK-loss, when mock semantics reviewed, then only one logical central final and an authenticated domain-bound ACK can complete local state. | CT P00 |
 | P00-AC-11 | Given N=1/3/10 with mixed permissions, when selection documented, then priority is array order, one active per channel and independent endpoint choice. | CT P00 |
 | P00-AC-12 | Given two independent persistence domains, when failover documented, then Agent cannot treat shared config string or prior ACK as cross-domain proof. | SEC P00 |
 | P00-AC-13 | Given cert expiration/revocation/clone, when trust flow documented, then fail closed, re-enroll and identity handling are explicit. | SEC P00 |
 | P00-AC-14 | Given SQLite corruption/host restore, when operator workflow documented, then no auto-reset and same-host versus clone identity is unambiguous. | FT-REVIEW P00 |
-| P00-AC-15 | Given performance DEC-08, when reference harness reviewed, then RSS/CPU/jitter definitions and native arch setup are reproducible. | NT-REVIEW P00 |
+| P00-AC-15 | Given DEC-08 and 1s/5s/30s plus change-driven metadata cadences, when benchmark harness reviewed, then RSS/CPU/jitter/mount cardinality, due-rate correctness, collector overhead, disk/WAL and native arch conditions are reproducible. | NT-REVIEW P00 |
 | P00-AC-16 | Given 30-day central 15m retention and 61-day Agent Pending, when external API contract reviewed, then idempotent late acceptance/hourly-daily recomputation precedes durable ACK. | CT P00 |
 | P00-AC-17 | Given mTLS issuer/Bridge/API mock, when ownership matrix reviewed, then external implementation responsibility and service owner approvals are explicit. | REV P00 |
 | P00-AC-18 | Given MIT as-built, when Apache-2.0 plan reviewed, then license change is conditional on rights audit/NOTICE and release verification includes trusted signing. | LEGAL/SEC P00 |
-| P00-AC-19 | Given approved scope, when all 57 ticket dependencies and AC-001–055 are traced, then no mandatory behavior is unowned or silently assumed by code. | REV P00 |
+| P00-AC-19 | Given approved lean single-Go-daemon scope and AD-01–03, when all 57 tickets and AC-001–055 are traced, then first-slice health, per-metric due/quality/aggregation and later network dependencies are owned, without plugin runtime or extra storage/service. | REV P00 |
 | P00-AC-20 | Given all five design docs and backlog, when owners sign G00, then explicit evidence/sign-offs exist; docs approval alone does not authorize code or release. | REVIEW P00 |
 
 ## 3. Executable release-level AC-001–055
@@ -46,16 +46,16 @@
 | AC-006 | Given SQLite busy/crash/WAL checkpoint stress, when reopened, then integrity is OK and there is no partially committed logical operation. | FT P02 |
 | AC-007 | Given upgrade/failed migration/downgrade attempts, when schema version rules execute, then upgrade is atomic and unsafe binary/schema mismatch fails closed. | FT P02 |
 | AC-008 | Given restart/same-host restore/clone, when identity loads, then authorized host preserves stable ID; cloned host cannot reuse registration without a distinct Agent ID and central-side quarantine/approval; no secrets disclose. | IT/SEC P02/P06 |
-| AC-009 | Given a healthy reference host and fake clock, when sampling runs, then nominal cadence is ~1 second with recorded actual elapsed time and no invented samples. | NT/UT P03 |
-| AC-010 | Given missing/partial reads, counters exceeding 2^53, counter resets and mount/interface churn, when sampled and serialized, then precision, error/coverage semantics and per-entity validity are preserved; no unsafe JSON number truncation. | UT P03 |
-| AC-011 | Given absent networks/Bridge/API, when sampling continues, then raw rows persist independently with bounded memory and observable gaps. | IT/FT P03 |
+| AC-009 | Given one-hour deterministic clock and valid host, when one common 1Hz frame scheduler runs, then 3600 frames have genuine elapsed time while 1s CPU/Network/Memory/Disk-I/O, 5s Load (720) and 30s capacity (120) schedule their own **real** due measurements, and metadata only at startup/change; no invented measurements. | NT/UT P03 |
+| AC-010 | Given 1s/5s/30s due patterns, missing/error/stale/not_due/counter_reset/unsupported cases, counters >2^53 and mount/interface churn, when sampled/serialized, then original metric times, precision, per-entity quality, fresh-zero versus unknown and TTL age are preserved with no fake repeated raw metric. | UT P03 |
+| AC-011 | Given absent networks/Bridge/API, when multi-rate collection continues, then 1Hz raw frames contain only genuine due observations/errors, bounded Live cache cannot write duplicate old metrics to SQLite, all gaps and offline history pressure are observable. | IT/FT P03 |
 | AC-012 | Given a 1-hour run and restart, when resumed, then no duplicate raw IDs, runaway timers or per-second SSH reconnects occur. | NT P03 |
 | AC-013 | Given time xx:xx:00.000/59.999, when minute closes, then `[start,end)` window includes each valid raw ID exactly once. | UT P04 |
-| AC-014 | Given 40 observed samples/60 expected plus a short spike, when aggregated, then reported coverage is 40/60 and peak/max are retained; missing 20 are not invented. | UT P04 |
+| AC-014 | Given CPU 40/60 valid with one actual 1s spike, Load 8/12 valid and capacity 2/2 valid in the same full minute, when rolled up, then each denominator and measured extrema/time are preserved; off-cadence frames are not counted missing and an unseen between-30s capacity spike is not invented. | UT P04 |
 | AC-015 | Given crash before/during minute transaction, when reopened, then both final minute and `saved` changes are all-or-none. | FT P04 |
 | AC-016 | Given retry after completed minute transaction, when rerun, then no duplicate minute record or mis-marked raw ID is created. | FT P04 |
 | AC-017 | Given saved and unsaved raw rows, when cleanup runs or crashes, then only saved rows are deleted. | FT P04 |
-| AC-018 | Given 15 completed/partially missing minutes, when 900s rollup runs, then coverage, count, weighted values, extrema, last and anomaly evidence remain mathematically correct. | UT P05 |
+| AC-018 | Given 15 finalized minutes with 1s/5s/30s metrics, stale cached view and clock/gap cases, when 900s rollup runs, then per-metric due/valid counts (normal planned 900/180/30), valid-duration weighted statistics, actual measured extrema/time, entity quality and missing coverage remain correct; cached values do not inflate history. | UT P05 |
 | AC-019 | Given crash around 15m commit/cleanup, when retried, then one final record exists and no required minute is lost before commit. | FT P05 |
 | AC-020 | Given pending final records inserted out-of-order, when queried, then oldest unACKed 900s period is returned first. | IT P05 |
 | AC-021 | Given 61 virtual days including unACKed old data, when retention runs, then ACKed data follows approved expiry policy and unACKed data is never silently dropped. | FT P05 |
@@ -65,7 +65,7 @@
 | AC-025 | Given authenticated but unauthorized Agent/channel, when Hello or send executes, then authorization is denied with typed non-secret diagnostic. | SEC/CT P06 |
 | AC-026 | Given certificate/key rotation during service life, when rotated, then new trusted identity reconnects and old revoked identity cannot transmit. | SEC/IT P06 |
 | AC-027 | Given incompatible major protocol and oversized payload, when negotiating, then fail closed/bounded with no unbounded allocation. | SEC/CT P06 |
-| AC-028 | Given a subscribed mock Bridge, when healthy 1s samples arrive, then subscribers receive ordered/schema-valid live envelopes; no historical DB read/write occurs. | CT/E2E P07 |
+| AC-028 | Given subscribed mock Bridge and due CPU every 1s, Load every 5s and capacity every 30s, when Live frames are relayed, then envelopes distinguish actual new measurements from not_due and optional old cached display with original measured_at/age/TTL/stale; no historical DB access occurs. | CT/E2E P07 |
 | AC-029 | Given a permanently slow Bridge, when collection continues, then sample writes and rollups remain independent; live buffer stays bounded with explicit drops. | FT/NT P07 |
 | AC-030 | Given network disconnection and re-establishment, when stream reconnects, then fresh live data resumes without fabricated historical backfill or per-tick SSH. | IT P07 |
 | AC-031 | Given Persistence API down, when Live Bridge stays up, then live samples continue through Bridge without waiting for central ACK. | E2E P07 |
@@ -90,8 +90,8 @@
 | AC-050 | Given package install/upgrade/uninstall on supported OS, when operated as service, then files/identity/permissions behave as documented and no unsafe replacement occurs. | NT P10 |
 | AC-051 | Given a clean Linux VM and only public docs, when operator follows onboarding/recovery guide, then can collect data and connect to contract mocks without undocumented steps. | E2E P10 |
 | AC-052 | Given full crash/corrupt/disk-full/clock/ACK-loss fault suite, when replayed, then INV-01–10 remain true or an approved explicit degraded/error state is exposed. | FT P11 |
-| AC-053 | Given N=3 multi-host test rig, when both channels run with independent outages, then 1s Live and finalized 900s Persistence match their distinct approved APIs. | E2E P11 |
-| AC-054 | Given approved native reference rigs and generated 60/61-day data, when benchmarked, then peak RSS <=128MB, mean CPU <=5% of one core, schedule-start jitter P99 <=500ms, disk/WAL usage reported and qualified replay >=2 final/s target or explicit reviewed exception. | NT P11 |
+| AC-053 | Given N=3 multi-host rig and independent outages, when 1Hz Live multi-rate metric frames and finalized 900s Persistence transmit, then both protocols preserve per-metric timestamps/cadence/quality and ACK/domain rules, with no history through Bridge. | E2E P11 |
+| AC-054 | Given native rigs and generated 60/61-day multi-rate sample/profile data, when benchmarked, then 1Hz frame jitter P99 <=500ms, peak RSS <=128MB, mean CPU <=5% of one core, actual 1s/5s/30s due rates and health accuracy, DB/WAL usage and replay >=2 final/s target (or explicit approved evidence-backed exception) are reported. | NT P11 |
 | AC-055 | Given candidate release, when architecture, QA, security, licensing and external-interface owners review evidence, then all P0/P1 release blockers close and sign-off is explicit. | Review P11 |
 
 
@@ -102,7 +102,7 @@
 | SIGKILL before/mid/after raw/minute/15m transaction; WAL checkpoint | SQLite resumes with no partially committed logical stage and no false saved/ACK; no corruption or explicit fail-closed |
 | 40 valid/60 expected with one-second max spike | Minute and quarter preserve observed coverage, min/max/peak/time, elapsed-weighted mean and missing 20 |
 | 120s grace, minute/quarter boundary, delayed raw, NTP forward/back, DST, reboot | UTC half-open assignment; late-after-freeze quality reported; no fabricated clock-corrected sample |
-| Missing CPU, network parser truncation, unreadable mount, reset/wrap, hotplug, 1000 interfaces | Partial errors explicit; zero not misused; resources bounded |
+| Missing CPU, network parser truncation, unreadable mount, reset/wrap, hotplug, 1000 interfaces | Multi-rate due and not_due are distinct; partial errors explicit; zero not misused; resources bounded |
 | SQLite BUSY, ENOSPC, disk permissions, corrupt DB, inconsistent WAL backup | no hidden wipe or automatic identity change; recovery documented |
 | 1/30/61 days offline, restart mid-cleanup | unACKed final protected beyond 60d, ACKed expiry uses period-end, replay oldest-first |
 | HTTP 200 absent durable ACK, wrong agent/period/hash/domain, unknown schema, spoofed or stale ACK | no `persisted_at` mutation |
@@ -114,6 +114,21 @@
 | Legacy Desktop CLI and new daemon binary | no silent incompatible replacement; migration gate and core SSH protection |
 | Package upgrade/downgrade, unsigned/tampered artifact, ARM native | version/schema safe, trusted verification mandatory, platform qualification explicit |
 
+## 4A. Mandatory multi-cadence and freshness fixture suite
+
+| Fixture | Testable assertion | Primary IDs |
+|---|---|---|
+| Deterministic 1h fake monotonic clock, no failures | 3600 actual frame opportunities, 1s metric due counts 3600, Load 720 and Filesystem capacity 120; static metadata only on startup/change; no unbounded worker timers | AC-009, AC-012 |
+| Full 60s mixed-rate minute, CPU 40 valid with observed 1s spike, Load 8 valid, capacity 2 valid | Independent 40/60, 8/12 and 2/2 coverage; extrema/time from actual readings only; no 48 false missing Load slots | AC-014, AC-018 |
+| 30s Filesystem checks with an injected capacity change between checks but not observed | No claim that hidden sub-30s spike was measured; accurate resolution and stale/age indication | AC-010, AC-014 |
+| Last valid Load at t=0, subsequent not_due frames and later TTL expiry | No repeated raw Load; original measured_at stays t=0 in optional Live cache, status moves from within-TTL old to stale, no new sample counts | AC-010, AC-011, AC-028 |
+| Due memory read error, actual zero network counter and unsupported disk_io | Typed error/null distinct from valid(0) and unsupported; per-metric quality survives 60s and 900s | AC-010, AC-018 |
+| Counter wrap/reset, latency overrun, clock step, process restart/profile version change | No negative/false rate, unobserved due counts explicit, old profile's immutable final not rewritten; no extra raw frames | AC-009, AC-010, AC-018 |
+| Slow Bridge and fast Disk I/O rate collector under 128MB budget | Live drops old events rather than backpressuring collector; Health exposes per-metric age, Collector/Storage/Persistence independently | AC-011, AC-029, AC-054 |
+| Full N=3 Live+Persistence with mixed cadences and lost ACK | Live frame correctly distinguishes not_due/cache; final hashes metric-specific coverage; retry byte-identical, authorized ACK and one central record | AC-028, AC-034, AC-035, AC-053 |
+
+The due/coverage fixtures above are **required acceptance**, not production test results. A PASS must supply a deterministic schedule phase, original source timestamps and weighted numerator/denominator verification in linked logs. A fresh 1s frame does **not** make the Load or capacity value fresh.
+
 ## 5. Phase gates and owners
 
 | Gate | Required proof and owners |
@@ -121,9 +136,9 @@
 | G00 | Five canonical design docs + this single AC matrix + updated implementation backlog; product/architecture + SQLite/data + protocol/security + external-interface + QA sign-offs; P00-AC-01–20 PASS with links. Owner approval of design text alone is not the same as executable evidence. |
 | G01 | AC-001–004 with daemon-only collector extraction, signal handling and versioned Desktop v1 migration review |
 | G02 | AC-005–008 on 3-table schema, WAL/FULL, CGO-free qualifying drivers, corruption and clone |
-| G03 | AC-009–012 with controlled 1Hz sampler and one-hour soak |
-| G04 | AC-013–017 with UTC 120s grace, atomic saved+minute and cleanup |
-| G05 | AC-018–022 with complete 900s final, 60-day ACKed cleanup and 61-day Pending survival |
+| G03 | AC-009–012 with one controlled 1Hz frame scheduler, deterministic 1s/5s/30s due cadences, typed status, first-slice health and one-hour soak |
+| G04 | AC-013–017 with UTC 120s grace, per-metric opportunity/quality-preserving 60s aggregate, atomic saved+minute and cleanup |
+| G05 | AC-018–022 with 900s per-metric counts/valid-duration/measured peaks, 60-day ACKed cleanup and 61-day Pending survival |
 | G06 | AC-023–027 with config N and mTLS/authz negative suite |
 | G07 | AC-028–031 with live-only Bridge mocked subscriber and blocked consumer |
 | G08 | AC-032–038 with durable central mock, hash/domain ACK and replay after loss |
@@ -135,7 +150,7 @@
 
 ## 6. NFR reference harness (DEC-08)
 
-Reference load: pinned Linux kernel, CPU/arch, disk/FS type, interface/mount cardinality, 1-hour warm and steady run, 60/61-day accelerated DB/WAL fixture, network RTT, 1/30/61-day disconnection, failover and 1Hz P99. Report mean **process CPU seconds/wall seconds <=0.05 of one core**, peak **RSS <=128MB**, **P99 scheduler start deviation <=500ms** under qualified reference; engineering replay target >=2 final records/s against healthy local mock with owner-approved exception only after evidence; disk measured rather than assumed fixed quota. Native amd64/arm64/armv7/armv6 tests must be distinguished from cross-build.
+Reference load: pinned Linux kernel, CPU/arch, disk/FS type, interface/mount cardinality, **1s frame and independent 1s/5s/30s due policy, quality/freshness TTL, clock/profile churn, startup/change metadata**, 1-hour warm and steady run, 60/61-day accelerated DB/WAL fixture, network RTT, 1/30/61-day disconnection, failover and 1Hz P99. Report mean **process CPU seconds/wall seconds <=0.05 of one core**, peak **RSS <=128MB**, **P99 scheduler start deviation <=500ms** under qualified reference; engineering replay target >=2 final records/s against healthy local mock with owner-approved exception only after evidence; disk measured rather than assumed fixed quota. Native amd64/arm64/armv7/armv6 tests must be distinguished from cross-build.
 
 ## 7. Traceability and change control
 
