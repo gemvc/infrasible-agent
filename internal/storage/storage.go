@@ -91,6 +91,8 @@ CREATE TABLE IF NOT EXISTS server_info (
  identity_epoch INTEGER NOT NULL DEFAULT 1 CHECK(identity_epoch>0),
  created_at_ms INTEGER NOT NULL,
  host_metadata_json TEXT NOT NULL CHECK(json_valid(host_metadata_json)),
+ last_raw_at_ms INTEGER,
+ last_ack_at_ms INTEGER,
  last_finalized_minute_start_ms INTEGER,
  last_finalized_quarter_start_ms INTEGER
 );
@@ -159,9 +161,13 @@ func (s *Store) Save(ctx context.Context,f collector.Frame)error{
  raw:=make([]byte,16);if _,e:=rand.Read(raw);e!=nil{return e}
  data,e:=json.Marshal(f.Metrics);if e!=nil{return e}
  if f.ObservedAtMS<=0{return errors.New("missing observed timestamp")}
- _,e=s.db.ExecContext(ctx,`INSERT INTO raw_samples(sample_id,observed_at_ms,effective_at_ms,elapsed_ms,metrics_json,quality_json)
+ tx,e:=s.db.BeginTx(ctx,nil);if e!=nil{return e};defer tx.Rollback()
+ _,e=tx.ExecContext(ctx,`INSERT INTO raw_samples(sample_id,observed_at_ms,effective_at_ms,elapsed_ms,metrics_json,quality_json)
  VALUES(?,?,?,?,?,?)`,hex.EncodeToString(raw),f.ObservedAtMS,f.ObservedAtMS,f.ElapsedMS,string(data),`{"policy":"1s/5s/30s"}`)
- return e
+ if e!=nil{return e}
+ _,e=tx.ExecContext(ctx,`UPDATE server_info SET last_raw_at_ms=CASE WHEN last_raw_at_ms IS NULL OR last_raw_at_ms<? THEN ? ELSE last_raw_at_ms END WHERE singleton_id=1`,f.ObservedAtMS,f.ObservedAtMS)
+ if e!=nil{return e}
+ return tx.Commit()
 }
 func aligned(ms int64,interval int64)int64{return ms-ms%interval}
 func digest(b []byte)string{h:=sha256.Sum256(b);return hex.EncodeToString(h[:])}
@@ -288,10 +294,15 @@ func (s *Store) OldestPending(ctx context.Context)(Pending,bool,error){
  return p,e==nil,e
 }
 func (s *Store) Acknowledge(ctx context.Context,id,hash string,at time.Time)error{
- r,e:=s.db.ExecContext(ctx,`UPDATE aggregates SET persisted_at_ms=? WHERE resolution_seconds=900 AND record_id=? AND payload_sha256=? AND persisted_at_ms IS NULL`,at.UTC().UnixMilli(),id,hash)
- if e!=nil{return e};n,e:=r.RowsAffected();if e!=nil{return e};if n!=1{return errors.New("no matching unacknowledged final record")}
- return nil
+ tx,e:=s.db.BeginTx(ctx,nil);if e!=nil{return e};defer tx.Rollback()
+ r,e:=tx.ExecContext(ctx,`UPDATE aggregates SET persisted_at_ms=? WHERE resolution_seconds=900 AND record_id=? AND payload_sha256=? AND persisted_at_ms IS NULL`,at.UTC().UnixMilli(),id,hash)
+ if e!=nil{return e}
+ n,e:=r.RowsAffected();if e!=nil{return e};if n!=1{return errors.New("no matching unacknowledged final record")}
+ _,e=tx.ExecContext(ctx,`UPDATE server_info SET last_ack_at_ms=CASE WHEN last_ack_at_ms IS NULL OR last_ack_at_ms<? THEN ? ELSE last_ack_at_ms END WHERE singleton_id=1`,at.UTC().UnixMilli(),at.UTC().UnixMilli())
+ if e!=nil{return e}
+ return tx.Commit()
 }
+
 func fileBytes(path string)int64 {st,e:=os.Stat(path);if e!=nil{return 0};return st.Size()}
 func (s *Store) Status(ctx context.Context,now time.Time)(StorageStatus,error){
  st:=StorageStatus{AgentID:s.id,DBBytes:fileBytes(s.path),WALBytes:fileBytes(s.path+"-wal"),SHMBytes:fileBytes(s.path+"-shm"),RetentionCutoffMS:now.UTC().Add(-Retention).UnixMilli()}
