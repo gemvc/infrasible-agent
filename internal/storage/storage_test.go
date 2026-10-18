@@ -338,7 +338,7 @@ func TestMissingFramesAndInvalidValuesDoNotFabricateCoverage(t *testing.T) {
 	observations := []struct {
 		second int
 		status string
-		value any
+		value  any
 	}{
 		{0, "valid", float64(0)},
 		{30, "error", nil},
