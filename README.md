@@ -1,8 +1,12 @@
 # Infrasible Monitoring Agent
 
-Lightweight, open-source Linux host monitoring agent. The agent writes read-only CPU, memory, load, filesystem and network metrics as JSON for SSH-based clients such as Infrasible.
+**Greenfield product:** a new standalone Linux monitoring daemon, not yet implemented. The current repository code is a historical CLI collector reference; no customers, installations, legacy consumers or production data need migration. The approved daemon gathers Linux host metrics, stores them in SQLite and sends independent Live and Persistence streams.
 
-**Status:** released legacy baseline `v0.1.0` (published 2026-10-17). **Current license:** MIT (see LICENSE). **Approved target:** a separate daemon-only v2 design, not yet implemented; Apache-2.0 is conditional on legal review.
+**Status:** historical reference release `v0.1.0` (published 2026-10-17). **Current license:** MIT (see LICENSE). **Approved target:** a separate daemon-only v2 design, not yet implemented; Apache-2.0 is conditional on legal review.
+
+## Historical CLI reference (not the new product)
+
+The commands, build instructions and release notes in the following sections describe the existing historical `v0.1.0` source and are **not** installation or integration instructions for the new daemon. Initial greenfield delivery has no backwards-compatibility obligation.
 
 ## Supported platforms
 
@@ -26,7 +30,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o infrasible-agent-linux-arm64 .
 
 `stream` continues until the client terminates the process. Each line contains a JSON snapshot. The agent does not expose a port, run as a service or configure SSH. Installation and SSH session management belong to the client.
 
-See [legacy protocol documentation](docs/PROTOCOL.md) for the **v0.1.0** JSON contract. The **new Agent design is daemon-only** and will remove the public `version/snapshot/stream --json` commands after an explicit Desktop consumer migration; do not replace a currently deployed v1 binary silently.
+See [legacy protocol documentation](docs/PROTOCOL.md) for the **v0.1.0** JSON contract. The **new Agent design is daemon-only** and will remove the public `version/snapshot/stream --json` commands as part of the clean-install greenfield implementation. No legacy consumers, deployed v1 installations or migration gates exist.
 
 ## Releases
 
