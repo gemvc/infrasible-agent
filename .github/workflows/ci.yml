@@ -15,24 +15,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Format new Go source (review output)
-        run: |
-          gofmt -w main.go main_test.go version.go version_test.go internal
-          find internal -name '*.go' -print | sort | while read -r file; do
-            echo "FMT_FILE_START:$file"
-            base64 -w0 "$file"; echo
-            echo "FMT_FILE_END:$file"
-          done
-          for file in main.go main_test.go version.go version_test.go; do
-            echo "FMT_FILE_START:$file"
-            base64 -w0 "$file"; echo
-            echo "FMT_FILE_END:$file"
-          done
+      - name: Verify Go formatting
+        run: test -z "$(gofmt -l main.go main_test.go version.go version_test.go internal)"
       - name: Resolve pinned module dependencies
         run: |
           go mod tidy
-          echo '=== GO MOD ==='; cat go.mod
-          echo '=== GO SUM ==='; cat go.sum
+          git diff --exit-code -- go.mod go.sum
       - name: Test and lint
         run: |
           go vet ./...
@@ -51,6 +39,7 @@ jobs:
           printf '{"config_version":1,"data_path":"%s/agent.db","monitoring_servers":[]}\n' "$RUNNER_TEMP" > "$RUNNER_TEMP/config.json"
           ./dist/infrasible-agent-linux-amd64 config validate --config="$RUNNER_TEMP/config.json" | grep -Fq '"valid":true'
           ./dist/infrasible-agent-linux-amd64 storage status --config="$RUNNER_TEMP/config.json" | grep -Fq '"pending":0'
+          ./dist/infrasible-agent-linux-amd64 health status --config="$RUNNER_TEMP/config.json" | grep -Fq '"sqlite_ready":true'
           ./dist/infrasible-agent-linux-amd64 storage cleanup --dry-run --config="$RUNNER_TEMP/config.json" | grep -Fq '"dry_run":true'
       - uses: actions/upload-artifact@v5
         with:

@@ -22,6 +22,7 @@ Start from [docs/DAEMON_RUNBOOK.md](docs/DAEMON_RUNBOOK.md). Configure `/etc/inf
 ```sh
 infrasible-agent config validate --config=/etc/infrasible-agent/config.json
 infrasible-agent run --config=/etc/infrasible-agent/config.json
+infrasible-agent health status --config=/etc/infrasible-agent/config.json
 infrasible-agent storage status --config=/etc/infrasible-agent/config.json
 infrasible-agent storage cleanup --dry-run --config=/etc/infrasible-agent/config.json
 infrasible-agent storage cleanup --safe --config=/etc/infrasible-agent/config.json

@@ -22,6 +22,7 @@ Do not run this installer on production until its service user, certificate path
 
 ```sh
 infrasible-agent config validate --config=/etc/infrasible-agent/config.json
+infrasible-agent health status --config=/etc/infrasible-agent/config.json
 infrasible-agent storage status --config=/etc/infrasible-agent/config.json
 infrasible-agent storage cleanup --dry-run --config=/etc/infrasible-agent/config.json
 infrasible-agent storage cleanup --safe --config=/etc/infrasible-agent/config.json
