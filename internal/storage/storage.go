@@ -555,6 +555,9 @@ func (s *Store) quarter(ctx context.Context, start, now int64) error {
 	if e != nil {
 		return e
 	}
+	// Recalculate coverage for the complete 900-second period, including
+	// the minutes that had no raw frames at all.
+	completeCoverage(quality, 900)
 	qualityJSON, e := json.Marshal(quality)
 	if e != nil {
 		return e
