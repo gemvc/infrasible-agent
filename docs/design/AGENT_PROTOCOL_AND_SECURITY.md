@@ -286,3 +286,105 @@ Configuration edit, validation, resource-limit provisioning and storage status/s
 Configuration replacement is atomic (staged file, validated policy, fsync/rename where supported), with auditable revision and explicit active/effective status. A malformed or unauthorized config must not silently replace the active validated snapshot. Only trusted, authorized operators may apply systemd drop-ins; non-root Agent must not self-elevate. Privileged processes should receive narrowly scoped inputs, never arbitrary shell fragments or SQL from the Desktop.
 
 A proposed local administrative CLI may later support `config validate`, `config status`, `storage status`, `storage cleanup --dry-run` and `storage cleanup --safe`; **names and exact JSON envelope are design candidates**, not implemented commands or approved v2 wire contracts. Operators must see whether CPU/memory quotas are *desired* or verified *effective*. Storage cleanup is ACK/retention/lineage guarded, bounded, auditable, redacted and never deletes unACKed Pending. Host CPU/RAM/disk alert thresholds are Desktop-owned evaluation policy, not permissions to mutate host resources. No enrollment key/token is read into a user-facing diagnostics response.
+
+## 12. v0.3.0 executable wire vs target protocol — integration handoff
+
+**Read this before implementing any Monitoring Relay or Desktop connection.** Sections 1–11 describe the owner-approved **target** and proposed contracts. They are NOT evidence that the current Agent actually sends those envelopes. The following statements were checked against `internal/transport/transport.go`, `internal/storage/storage.go`, `internal/config/config.go` and `main.go` on `main@953d65646d32506a9c96ef3f6548be8f8c3f8fd5`.
+
+### Current Live request — implemented Agent output
+
+The Agent connects with `github.com/coder/websocket` to the configured `live_url` using outbound TLS 1.3 minimum, trusted CA, `server_name` verification and configured mTLS client cert/key. For each supplied fresh frame it currently writes this JSON **shape** as a WSS text message (field values illustrative):
+
+```json
+{
+  "type": "live",
+  "agent_id": "opaque-stable-local-id",
+  "frame": {
+    "observed_at_ms": 1792324801000,
+    "elapsed_ms": 1000,
+    "metrics": {
+      "cpu": {
+        "status": "valid",
+        "measured_at_ms": 1792324801000,
+        "unit": "percent",
+        "value": {"total_pct": 12.5}
+      }
+    }
+  }
+}
+```
+
+`frame.metrics` holds only fields the collector emitted on that tick; metric values may be scalar or objects. Status `valid` and `error` are used by the current collector; the richer proposed quality/cadence/freshness envelope is **not** currently serialized. The collector uses 1-second CPU/memory/network/disk probes, 5-second Load and 30-second filesystem probes. The runtime Live buffer is capacity 2 with old-frame drop on pressure. The current sender does **not** send `agent_hello`, wait for `hello_accepted`, implement application-level heartbeat/registration authorization or expose Desktop subscriber protocol. Therefore a central Relay built for the proposed `live_sample` contract **will not interoperate as-is** with this binary without a deliberately versioned adaptation or coordinated changes.
+
+**Relay ingress implementation dependency:** jointly specify strict message schema, bounded message size, host/Agent registration ACL, negotiated version and heartbeat, duplicate/gap semantics, and whether temporary compatibility for `type=live` is permitted. If permitted, label it an explicitly tested *temporary* compatibility adapter, not an undocumented production contract. Relay must relay to authenticated Desktop subscribers, not store monitoring history. Subscriber URLs/handshakes and authorization are unverified and belong to the Relay/Desktop implementations.
+
+### Current Persistence request and ACK — implemented Agent behavior
+
+Only final local `resolution_seconds=900` aggregates with `persisted_at_ms IS NULL` are fetched oldest-first. The Agent POSTs the exact saved `wire_payload` bytes with `Content-Type: application/json` and `Idempotency-Key: <record_id>` to the configured `persistence_url` over HTTPS/mTLS. The actual stored JSON is built by `storage.Final` and looks like this structurally (timestamps, IDs and checksum are illustrative):
+
+```json
+{
+  "agent_id": "opaque-stable-local-id",
+  "schema_version": 2,
+  "period_start_ms": 1792324800000,
+  "resolution_seconds": 900,
+  "record_id": "stable-record-id",
+  "sample_count": 840,
+  "expected_slots": 900,
+  "observed_slots": 840,
+  "summary": {
+    "cpu.total_pct": {
+      "count": 840, "due": 840, "failed": 0,
+      "sum": 10500, "min": 2, "max": 80,
+      "last": 12, "peak_at_ms": 1792324890000,
+      "last_at_ms": 1792325600000
+    }
+  },
+  "payload_sha256": "hexadecimal-sha256"
+}
+```
+
+**Important gap:** the current payload digest is computed using Go `json.Marshal` of the struct without `payload_sha256`, **not an RFC 8785 JCS canonicalization implementation**. Do not claim current code satisfies the target hash specification in section 6. Schema fields such as per-metric scheduled coverage, quality and original freshness are not yet fully represented in this actual payload.
+
+The current code accepts **only HTTP 200** and decodes an ACK with these exact JSON keys:
+
+```json
+{
+  "durable": true,
+  "agent_id": "opaque-stable-local-id",
+  "record_id": "stable-record-id",
+  "payload_sha256": "matching-hexadecimal-sha256",
+  "period_start_ms": 1792324800000,
+  "persistence_domain": "primary",
+  "schema_version": 2
+}
+```
+
+The Agent checks `durable=true` and exact equality of `agent_id`, `record_id`, `payload_sha256`, `period_start_ms`, `persistence_domain` and `schema_version=2` before marking its row acknowledged. Current code does not carry a signed independent database proof; **actual durability and registration authorization are obligations of the authenticated central API and still require external signoff**. A returned `200` without matching ACK never advances `persisted_at`. For a lost ACK the Agent retries the identical stored bytes; the central service must enforce uniqueness/idempotence by record ID and hash.
+
+The section-6 proposed `durable_ack` envelope (including `type`, `period_start_utc`, `committed_at_utc`) is **not** the v0.3.0 decoder's format. Central API owners must choose and approve a single interoperable contract and write cross-repository fixtures/tests before treating the final release as accepted.
+
+### Current failover and connection limitations
+
+- Live cycles eligible configured endpoints after connection/stream errors with approximately 3-second delay; it **does not implement** authorized `Hello`, priority-based hysteresis/failback or centrally registered ACL negotiation.
+- Persistence selects the first configured Persistence URL and retries there every ~5 seconds; **no persistence failover** currently occurs even when more URLs are configured.
+- No hot config reload, certificate enrollment/renewal/revocation automation, active channel status query or Desktop provisioning API currently exists.
+- A `persistence_domain` string in config and a matching ACK field are **not proof** of shared authoritative durable storage. Do not fail over across domains until that guarantee is established.
+- An operational model with **one active Live Relay per Agent** is compatible with the target; do not equate an ordered endpoint list with concurrent active relays.
+
+### Minimum cross-component contract tests required before integration approval
+
+| Test | Expected outcome |
+|---|---|
+| Unregistered Agent with otherwise valid mTLS certificate | Server denies ingestion by channel/Agent ACL |
+| Registered Agent Live frame | Relay accepts the agreed version/schema and forwards to only authorized subscribed Desktop clients |
+| Agent Live connection drops | Desktop displays stale/disconnected state; no historical replay through Relay |
+| Persistence ACK has wrong record/hash/domain or only HTTP 200 | Local final remains Pending |
+| Central commit succeeds but ACK is lost | Exact replay is deduplicated centrally and eventually valid ACK is produced |
+| Central API receives raw or 60-second aggregation | Reject; only immutable 900-second final is allowed |
+| More than one configured endpoint | Only one Live active at a time; Persistence failover remains disabled until verified shared-domain implementation exists |
+| Desktop changes Agent settings | Existing authorized SSH path with validate, controlled restart and rollback; no inbound Agent API |
+| Desktop reads historical charts | Requests Historical API, not Live Relay nor direct Agent SQLite |
+| Certificate expires/revokes / host cloned | No unauthorized connection; explicit re-enrollment or quarantine by external authority |
+
+**Release impact:** This section is the implementer-facing reality check for v0.3.0. The target section-4/5/6 envelopes remain proposed. They must not silently be presented as implemented; discrepancies are integration blockers, not mere wording differences. For the executable local setup sequence see [Configuration](../CONFIGURATION.md).
