@@ -1,5 +1,7 @@
 # Infrasible Monitoring Agent — Target Architecture
 
+> **GREENFIELD OVERRIDE — owner decision (2026-10-18):** This product has **zero users, zero deployed installations and no production data**. Build the new Agent from a clean install. **No legacy v0.1.0 CLI consumer migration, side-by-side compatibility, backward-compatibility gate, data-import path or preservation of old binaries is required.** Existing source/release/docs are read-only reference material for useful collector logic and provenance, not a product compatibility obligation. Initial SQLite creation is fresh; retain schema version identification and fail-closed invalid-version detection, but **do not implement pre-launch database migration/upgrade/rollback machinery**. Preserve crash-safe restart of the new DB, same-host disaster recovery, mTLS identity/certificate rotation, fresh provisioning, source-quality tests, secure packaging and verified external API contracts. Normal future upgrades can be designed after first release. This owner decision supersedes any conflicting historical sentence or AC below; any obsolete migration-related AC/ticket is **NOT APPLICABLE**, not a release blocker.
+
 **Status:** approved owner architecture choices; detailed architecture baseline for G00 review; no runtime implementation authorized. **Source:** `main@8b43c8a20d3a00fb030634c46d4677eaf52661ed`, current agent v0.1.0 legacy CLI. **Contracts:** [Product Requirements](AGENT_PRODUCT_REQUIREMENTS.md), [SQLite](AGENT_SQLITE_SCHEMA.md), [Protocol/Security](AGENT_PROTOCOL_AND_SECURITY.md), [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).
 
 ## 1. System context, trust boundaries and ownership
@@ -39,7 +41,7 @@ The Agent repository may implement **mock boundary contracts/tests only**, never
 
 | Component | Responsibility | Forbidden coupling |
 |---|---|---|
-| Main daemon / Supervisor | Startup/shutdown, signals, identity/config readiness, resource health and worker lifetime | CLI v1 stdout stream or per-tick SSH |
+| Main daemon / Supervisor | Startup/shutdown, signals, identity/config readiness, resource health and worker lifetime | Legacy CLI compatibility or per-tick SSH |
 | Linux collector | Small built-in Go metric modules; CPU/Network/Memory/Disk-I/O 1s, Load 5s, Filesystem capacity 30s, metadata on startup/change; genuine timestamps/units/status/quality and bounded entity cardinality | Network delivery, mutating host or unbounded plugin runtime |
 | Monotonic scheduler | One 1000ms **frame** tick with deterministic due plan for metric families; measured actual elapsed, unique frame IDs, skip rather than fabricate overrun ticks | Separate unbounded timer/goroutine for each metric, re-stamping cached old readings |
 | Controlled SQLite writer | Serialize all DB mutations; `WAL` + `synchronous=FULL`; transactions and bounded BUSY retry | Waiting on Bridge or central API while holding DB transaction |
@@ -53,7 +55,7 @@ No additional Redis, JSONL, broker, microservice, queue DB, general plugin runti
 
 ## 3. Source-grounded AS-IS versus TO-BE
 
-The current `main.go` has `cpuSample/cpuUsage`, `memoryFrom`, `loadFrom`, `interfacesFrom`, `filesystems`, `snapshot`, stdout CLI `version/snapshot/stream --json`; `version.go` defines v0.1.0. It has no agent daemon, local SQLite, durable API, certificate enrollment, failover, or signed artifacts. `docs/PROTOCOL.md` is strictly the **legacy v1** stdout/SSH protocol. Preserve proven collector logic by test-driven extraction, but do **not** preserve removed public CLI commands in the new daemon. Version metadata must be available via approved registration/Hello/health contract rather than a legacy public `version --json` command. Preserve old v0.1.0 package for migration; prohibit silent overwrites while Desktop consumes v1.
+The current `main.go` has `cpuSample/cpuUsage`, `memoryFrom`, `loadFrom`, `interfacesFrom`, `filesystems`, `snapshot`, stdout CLI `version/snapshot/stream --json`; `version.go` defines v0.1.0. It has no agent daemon, local SQLite, durable API, certificate enrollment, failover, or signed artifacts. `docs/PROTOCOL.md` is strictly the **legacy v1** stdout/SSH protocol. Preserve proven collector logic by test-driven extraction, but do **not** preserve removed public CLI commands in the new daemon. Version metadata must be available via approved registration/Hello/health contract rather than a legacy public `version --json` command. No v0.1.0 migration, coexistence or backward compatibility is required: new deployments start clean; old code remains reference material only.
 
 Verified code corrections needed when implementation is separately approved: `cpuUsage` sums guest/guest_nice redundantly with Linux user/nice; partial network scanner/read failures and mount/statfs failures are silently omitted; snapshot waits internally one second instead of consuming one shared monotonic scheduler; raw counters are not delta/rates; stdout stream has no structured signal shutdown. Required classification: `main.go` REFACTOR, `version.go` REPLACE contract, parser tests KEEP/EXTEND, CLI tests REPLACE, packaging/CI EXTEND, v1 docs ARCHIVE AS-IS.
 
@@ -128,7 +130,7 @@ The collector's `observation_status` and displayed `freshness` are **orthogonal*
 
 - An authenticated network call never holds a DB transaction. All queues bounded; avoid growing goroutines and sample copies with N endpoints. Endpoint probes limited; capacity verified with N=1,3,10.
 - `STORAGE_DEGRADED` on ENOSPC/BUSY outside bounded retries; never mark uncommitted samples saved, never claim durable samples if write fails, **never delete unACKed final rows to recover space**, surface explicit lost/missing interval counter and capacity alerts. Live may remain available but should label history not guaranteed.
-- Corrupt SQLite: fail closed for durable path, preserve damaged files, protect original identity/keys, alert and require authenticated/manual recovery. No automatic blank reset; restore with a transactionally consistent SQLite backup/snapshot only. Downgrade to binary unable to read current schema fails closed.
+- Corrupt SQLite: fail closed for durable path, preserve damaged files, protect original identity/keys, alert and require authenticated/manual recovery. No automatic blank reset; restore with a transactionally consistent SQLite backup/snapshot only. An incompatible or unknown schema fails closed; no pre-launch schema upgrade/downgrade migration path is required.
 - Same-host restore intentionally preserves `agent_id` after validated identity/authorization; cloned host requires fresh `agent_id`, enrollment/key, and central revocation or rejection of duplicated concurrent credentials. Hostname/machine-id alone cannot reliably detect all unauthorized clones.
 - Clock drift/correction, unexpected reboot, interface/mount churn, partial permissions and restart mid-cleanup all have deterministic quality or recovery outcomes. Never convert an unknown measurement into a valid zero.
 - Local final 15m: 60-day ACKed retention, indefinite pending until authenticated durable ACK subject to physical-disk reality. Pending age/size, oldest period and WAL size are mandatory health fields; after 61-day isolation, replay can resume safely with central owner contract for late-arrival hourly/daily recomputation.
@@ -161,10 +163,10 @@ Config changes: validate full replacement file (schema version, URL schemes, exa
 | Clock jumps, daylight-saving, unavailable host | UTC boundaries and quality evidence, no invented observations |
 | 1000 mounts/interfaces, unreadable proc entries | bounded RSS, visible per-metric/entity partial errors |
 | Config reload removes authorized endpoint | old transport promptly canceled; new config atomic |
-| Old v1 Desktop installs daemon binary in place | blocked by versioned migration gate, no implicit CLI compatibility |
+| Legacy v1 consumer coexistence | NOT APPLICABLE: no users or legacy deployments; new Desktop integration targets only new Agent contracts |
 
 ## 9. Lifecycle/release boundaries and readiness
 
 P00 requires five canonical docs and updated single backlog, approved external contracts and measurable acceptance. P01 corrects collector; P02 SQLite; P03 1Hz; P04 minute; P05 final retention; P06 registration/mTLS; P07 Live; P08 Persistence; P09 HA; P10 packaging/rollback/security; P11 performance/security/acceptance. Repository owner approval of design/docs is **not** proof that code or external APIs exist. Implement after a separate explicit authorization for P01; no production mutation or release under this document.
 
-Open **external blocking agreements**: durable central ACK/domain and late-arrival compaction guarantees; Live Bridge subscriber/wire compatibility; enrollment issuer/revocation; Desktop v1 consumer migration (without core SSH rewrite); legal rights for Apache-2.0. Evidence-based driver choice/native ARM support remain phase gates rather than guessed completions.
+Open **external blocking agreements**: durable central ACK/domain and late-arrival compaction guarantees; Live Bridge subscriber/wire compatibility; enrollment issuer/revocation; legal rights for Apache-2.0. Evidence-based driver choice/native ARM support remain phase gates rather than guessed completions.

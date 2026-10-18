@@ -1,5 +1,7 @@
 # Infrasible Monitoring Agent — Protocol, Registration and Security
 
+> **GREENFIELD OVERRIDE — owner decision (2026-10-18):** This product has **zero users, zero deployed installations and no production data**. Build the new Agent from a clean install. **No legacy v0.1.0 CLI consumer migration, side-by-side compatibility, backward-compatibility gate, data-import path or preservation of old binaries is required.** Existing source/release/docs are read-only reference material for useful collector logic and provenance, not a product compatibility obligation. Initial SQLite creation is fresh; retain schema version identification and fail-closed invalid-version detection, but **do not implement pre-launch database migration/upgrade/rollback machinery**. Preserve crash-safe restart of the new DB, same-host disaster recovery, mTLS identity/certificate rotation, fresh provisioning, source-quality tests, secure packaging and verified external API contracts. Normal future upgrades can be designed after first release. This owner decision supersedes any conflicting historical sentence or AC below; any obsolete migration-related AC/ticket is **NOT APPLICABLE**, not a release blocker.
+
 **Status:** architecture-owner-approved engineering baseline; **wire examples and central-side guarantees REQUIRE EXTERNAL INTERFACE OWNER SIGN-OFF** before G00 closes. Agent repo implements clients and mocks only; not production Bridge/API/PKI. **Related:** [Requirements](AGENT_PRODUCT_REQUIREMENTS.md), [Architecture](AGENT_ARCHITECTURE.md), [SQLite](AGENT_SQLITE_SCHEMA.md), [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).
 
 ## 1. Wire and trust boundaries
@@ -79,7 +81,7 @@ A candidate can support only one channel when authorized/configured for it; its 
 
 ## 4. Hello/negotiation (proposed wire contract)
 
-Protocol v2 distinguishes new daemon transport from legacy v1 stdout/SSH; semantic versioning of the process alone is insufficient. Negotiate major, compatible minor and payload schema; reject incompatible major, unknown required capabilities or payload > size cap. The numeric defaults below are engineering starting points for mock tests, not deployed API claims.
+The new daemon uses its own explicitly versioned network protocol (initial proposed major 2); legacy v1 stdout/SSH is historical reference only and requires no compatibility. Semantic versioning of the process alone is insufficient. Negotiate major, compatible minor and payload schema; reject incompatible major, unknown required capabilities or payload > size cap. The numeric defaults below are engineering starting points for mock tests, not deployed API claims.
 
 ```json
 {
@@ -268,8 +270,8 @@ No telemetry side channel or automatic reporting to an unrelated vendor is autho
 
 Required mock assertions: 1Hz Live frame with correct 1s/5s/30s actual measurement timestamps, not_due Load/Filesystem on off-ticks and safe cached old display; metric-specific coverage 40/60 CPU versus 8/12 Load and normal 2/2 filesystem, old/stale does not count as new, JCS hash unchanged across idempotent retry; incompatible major rejection; bad CA/SNI/expired/revoked cert; valid mTLS but unauthorized Agent/channel; N=1/3/10 ordered selection; Live slow/drop/reconnect with no history persistence; persistence rejects raw/60s; 200 without ACK; forged/wrong hash/wrong domain ACK; PostgreSQL mock commit succeeded/ACK lost/identical replay; two shared versus independent central domains; 61-day late arrival/reaggregation; config revoke during ACK and rotation while live.
 
-**Unresolved external sign-offs (not product option votes):** Bridge ingress/outbound subscriber schema, Persistence ACK exact format and durable implementation, domain proof, central >30d late ingestion and dedup retention, PKI issuer/rotation/revocation/re-enrollment, Desktop v1 migration. Any promise absent from other service implementations remains BLOCKED and must not be declared complete by Agent-only tests.
+**Unresolved external sign-offs (not product option votes):** Bridge ingress/outbound subscriber schema, Persistence ACK exact format and durable implementation, domain proof, central >30d late ingestion and dedup retention, PKI issuer/rotation/revocation/re-enrollment, new Desktop integration using only the new Agent protocol. Any promise absent from other service implementations remains BLOCKED and must not be declared complete by Agent-only tests.
 
 ## 10. License/release compatibility
 
-Current source and distributed v0.1.0 are MIT; Apache-2.0 is the **intended** future license after copyright/third-party rights audit and NOTICE work. Verify signed artifact provenance/identity (e.g. keyless Sigstore/Cosign or equivalent approved mechanism) before unattended installs. Signed checksums complement, not replace publisher authentication. Do not delete or replace old v1 binaries while Desktop still relies on them. No code changes or automated deployment follow merely from this document.
+Current source and distributed v0.1.0 are MIT; Apache-2.0 is the **intended** future license after copyright/third-party rights audit and NOTICE work. Verify signed artifact provenance/identity (e.g. keyless Sigstore/Cosign or equivalent approved mechanism) before unattended installs. Signed checksums complement, not replace publisher authentication. No deployed users or old Desktop consumers exist, so no legacy binary coexistence or compatibility gate is required; deliver only a clean new-Agent installation. No code changes or automated deployment follow merely from this document.
