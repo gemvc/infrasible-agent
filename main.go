@@ -63,7 +63,7 @@ func run(args []string) error {
 		return agent.New(c, s, log).Run(ctx)
 	}
 	if len(args) == 2 && args[0] == "health" && args[1] == "status" {
-		s, e := storage.Open(c.DataPath)
+		s, e := storage.OpenExisting(c.DataPath)
 		if e != nil {
 			return e
 		}
@@ -77,7 +77,7 @@ func run(args []string) error {
 		return json.NewEncoder(os.Stdout).Encode(h)
 	}
 	if len(args) >= 2 && args[0] == "storage" {
-		s, e := storage.Open(c.DataPath)
+		s, e := storage.OpenExisting(c.DataPath)
 		if e != nil {
 			return e
 		}
