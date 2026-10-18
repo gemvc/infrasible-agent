@@ -151,7 +151,7 @@ A single active WSS per Agent/channel, independent of Persistence. Queue initial
 }
 ```
 
-This example is **conceptual**. Avoid a self-referential checksum: the hash is over precisely defined immutable canonical content **excluding the hash field itself**, and the final stored wire envelope is serialized once. Before committing P00 wire fixtures, define the exact hashed bytes and ensure `wire_payload` is stable on every retry/version upgrade; alternatively use a deterministic canonical encoding and verify. A full authenticated submission may carry `payload_sha256` computed over the agreed canonical metrics/identity fields rather than hashing an embedded self-reference.
+**Canonical hash definition (engineering-selected, external approval pending):** build the immutable submission object with all required identity, period, schema, quality and metrics fields **but omit only the `payload_sha256` member**; serialize it to canonical UTF-8 JSON following **RFC 8785 (JCS)**, then compute SHA-256 of those canonical bytes. Reject NaN/Infinity and invalid/non-representable numbers. Add `payload_sha256` to the envelope and store the **exact transmitted JSON bytes** in SQLite `wire_payload` for byte-identical retries. The transmitted `wire_payload` **is not itself hashed** because it contains its own digest. API mocks and central producer/consumer must use the same normative fixture and canonicalization; different hash for same logical `record_id` is a permanent conflict. Store/keep old v2 wire payload while pending across upgrades; do not regenerate it under a new schema.
 
 **ACK example**:
 
