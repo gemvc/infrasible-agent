@@ -46,3 +46,7 @@ sudo -u infrasible-agent /usr/bin/infrasible-agent storage cleanup --dry-run --c
 The storage and health commands require an **existing** database. Starting the daemon initializes the SQLite database and stable host Agent ID. Operator status does not create a new identity. For initial minute and quarter-hour summaries, allow the documented grace period; do not interpret early empty aggregates as a failed installation.
 
 For correct mTLS setup, [Configuration](CONFIGURATION.md). For safe maintenance and logs, [Operations](DAEMON_RUNBOOK.md). Do not delete or copy a live database file without also accounting for its WAL and SHM.
+
+## Integrating with Monitoring Desktop and Relay
+
+After installing and verifying local collection, follow the [Desktop-to-Agent configuration and enrollment workflow](CONFIGURATION.md#desktop--agent--monitoring-relay-operator-integration-v030) before adding a real Monitoring server. The current Agent cannot self-enroll or automatically issue/rotate certificates. URLs in sample config are placeholders, not deployable endpoints. For central Relay implementers, distinguish the [v0.3.0 executable wire contract](design/AGENT_PROTOCOL_AND_SECURITY.md#12-v030-executable-wire-vs-target-protocol--integration-handoff) from the future negotiated protocol: they are **not yet interoperable without contract alignment**. Do not claim end-to-end Production readiness merely because local installation works.
