@@ -57,10 +57,10 @@ func TestOperatorInspectionRejectsExistingDatabaseWithoutIdentity(t *testing.T) 
 	}
 	defer db.Close()
 	var count int
-	if err = db.QueryRow("SELECT count(*) FROM server_info").Scan(&count); err != nil {
+	if err = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='server_info'").Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {
-		t.Fatalf("operator inspection bootstrapped %d identity records", count)
+		t.Fatal("operator inspection modified an unrelated SQLite database")
 	}
 }

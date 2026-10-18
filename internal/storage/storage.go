@@ -167,12 +167,8 @@ func open(path string, allowBootstrap bool) (*Store, error) {
 	db.SetMaxIdleConns(1)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	for _, q := range []string{"PRAGMA auto_vacuum=INCREMENTAL", "PRAGMA journal_mode=WAL", "PRAGMA synchronous=FULL", "PRAGMA busy_timeout=5000", "PRAGMA foreign_keys=ON"} {
-		if _, e = db.ExecContext(ctx, q); e != nil {
-			db.Close()
-			return nil, e
-		}
-	}
+	// Validate the existing database before any PRAGMA that may change its
+	// journal or schema. Operator inspection must not adopt arbitrary SQLite files.
 	var version int
 	if e = db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); e != nil {
 		db.Close()
@@ -182,13 +178,25 @@ func open(path string, allowBootstrap bool) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("unsupported database user_version=%d", version)
 	}
-	if _, e = db.ExecContext(ctx, schema); e != nil {
+	if !allowBootstrap && version != 1 {
 		db.Close()
-		return nil, e
+		return nil, errors.New("existing agent database has no supported schema version")
 	}
-	if _, e = db.ExecContext(ctx, "PRAGMA user_version=1"); e != nil {
-		db.Close()
-		return nil, e
+	for _, q := range []string{"PRAGMA auto_vacuum=INCREMENTAL", "PRAGMA journal_mode=WAL", "PRAGMA synchronous=FULL", "PRAGMA busy_timeout=5000", "PRAGMA foreign_keys=ON"} {
+		if _, e = db.ExecContext(ctx, q); e != nil {
+			db.Close()
+			return nil, e
+		}
+	}
+	if allowBootstrap {
+		if _, e = db.ExecContext(ctx, schema); e != nil {
+			db.Close()
+			return nil, e
+		}
+		if _, e = db.ExecContext(ctx, "PRAGMA user_version=1"); e != nil {
+			db.Close()
+			return nil, e
+		}
 	}
 	var id string
 	err := db.QueryRowContext(ctx, "SELECT agent_id FROM server_info WHERE singleton_id=1").Scan(&id)
