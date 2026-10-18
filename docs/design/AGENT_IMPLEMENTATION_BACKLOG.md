@@ -136,7 +136,7 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 |---|---|---|
 | AG-0001 | Maintain `AGENT_PRODUCT_REQUIREMENTS.md` with owner DEC-01–11, AD-01–03, 1Hz frames/1s-5s-30s metric cadences, freshness/status vocabulary, non-goals, SLOs and locked invariants. | **Test:** every locked rule and per-metric due/quality case maps 1:1 with no contradiction; owner-approved documentation and cross-owner evidence distinguished. |
 | AG-0002 | Maintain `AGENT_ARCHITECTURE.md` with one scheduler, due-metric selection and bounded collectors, optional age-labeled Live cache, quality-first health, independent network channels, UTC rollup and fault states. | **Test:** deterministic walkthrough of 1s/5s/30s due, stale/zero/missing, crash/clock/network/overflow and early vertical slice; no implicit decision. |
-| AG-0003 | Maintain `AGENT_SQLITE_SCHEMA.md` with three-table DDL, frame-level versus per-metric expected-opportunity JSON, stable real measurement timestamps, 1m/15m weighted sufficient statistics, WAL/FULL, retention and migration. | **Test:** DDL and mock review validates 40/60 CPU, 8/12 Load, 2/2 capacity, no stale inflation, transaction/ACK invariants; data owner signs off. |
+| AG-0003 | Maintain `AGENT_SQLITE_SCHEMA.md` with three-table DDL, frame-level versus per-metric expected-opportunity JSON, stable real measurement timestamps, 1m/15m weighted sufficient statistics, WAL/FULL, retention and fresh-schema bootstrap. | **Test:** DDL and mock review validates 40/60 CPU, 8/12 Load, 2/2 capacity, no stale inflation, transaction/ACK invariants; data owner signs off. |
 | AG-0004 | Maintain `AGENT_PROTOCOL_AND_SECURITY.md` with live frame measured-at/age/quality/metadata and final metric-specific coverage, in addition to N-endpoint config, mTLS, authorized durable ACK and failover. | **Test:** 1Hz fresh frames distinguish old Live display and not_due; central 900s mock preserves exact metric-specific history/ACK; security and external owners approve. |
 | AG-0005 | Maintain `AGENT_ACCEPTANCE_AND_TEST_MATRIX.md` as canonical P00-AC-01–20/AC-001–055, with independent 1s/5s/30s, status/freshness/early-health negative-path fixtures; keep this as single phased backlog. | **Test:** all 57 tickets, 55 executable AC and 20 design AC trace without duplicate implementation plan; owner approves design, G00 still evidence-gated. |
 
@@ -144,7 +144,7 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 
 ## P01 — Baseline correctness, CLI and testability (P0)
 
-**Outcome:** preserve audited collector semantics, but create **daemon-only v2** (legacy v0.1.0 CLI remains a separate migration artifact). **Prereq:** G00 and DEC-07.
+**Outcome:** preserve audited collector semantics, but create **daemon-only v2** (legacy v0.1.0 is reference-only, not a migration artifact). **Prereq:** G00 and DEC-07.
 
 | Ticket | Deliverable / precise scope | Tests and acceptance |
 |---|---|---|
@@ -293,7 +293,7 @@ P00–P10 ──> P11 end-to-end qualification & release sign-off
 | AG-1102 | Run N=3 Live/Persistence E2E with independent outages, per-metric 1s/5s/30s Live frames, final-only 900s quality/coverage, hash/replay, shared/split domains and 60+ day recovery. | Bridge never stores history; 900s summary retains exact per-metric count/quality; no stale inflation or duplicate durable rows. |
 | AG-1103 | Benchmark one-hour native 1Hz frames, actual 1s/5s/30s collection, health/quality cost, high-cardinality mount/interface and disk I/O, SQLite/WAL/retention and 60-day replay. | CPU <=5% one core mean, peak RSS <=128MB, frame P99 jitter <=500ms, counts 3600/720/120 due on uninterrupted hour; otherwise release BLOCKED. |
 | AG-1104 | Verify platform matrix for Linux amd64, arm64, armv7, armv6: build, native smoke, service, network auth, SQLite integrity and artifact authenticity. | Every advertised production platform passes native qualification; unqualified platforms are not claimed as production-supported. |
-| AG-1105 | Review security (spoof/replay/token/cert/ACL/key exposure), docs, migration/restore, license provenance, API contract owners and all linked evidence; freeze Agent scope. | All P0/P1 blockers closed, owner checklist signed; versioned tag/release is authorized separately, no unreviewed runtime/API behavior. |
+| AG-1105 | Review security (spoof/replay/token/cert/ACL/key exposure), docs, clean install/disaster recovery, license provenance, API contract owners and all linked evidence; freeze Agent scope. | All P0/P1 blockers closed, owner checklist signed; versioned tag/release is authorized separately, no unreviewed runtime/API behavior. |
 
 **Gate G11 — Release candidate acceptance:** all signed INV + AC criteria, mandatory CI and native matrix, approved quantitative SLOs, release audit, owner sign-off; **only then** tag/release under separately approved execution authority.
 
@@ -328,7 +328,7 @@ The following are **contract tests against mocks** in this repo. They are not pe
 | Persistence API | Authorized `agent_id`, **900s final-only** with frame and per-metric expected/valid/error/quality fields, stable-ID idempotent durable PostgreSQL commit, verifiable ID/hash/domain ACK and typed retryability |
 | Historical API | UI historical reads reflect durable central records; never bridge/Agent SQLite; late-arrival correction and central 30-day/1-year/long-term policies documented by their owner |
 | Monitoring registration/PKI | Trusted certificate authority, server identity, Agent enrollment/rotation/revocation, allowed endpoint/channel mappings; controlled restoration |
-| Desktop/SSH legacy | Legacy v0.1.0 may continue for existing consumers pending explicit versioned migration. **New daemon removes public v1 CLI**, must never silently replace old consumers; core SSH/vault unchanged. |
+| Desktop/SSH integration | Greenfield only: no existing consumers or old-agent coexistence. New daemon removes public v1 CLI; new Desktop integration targets the new contract; core SSH/vault unchanged. |
 
 **Canonical v2 wire samples and durable ACK** are in [AGENT_PROTOCOL_AND_SECURITY.md](AGENT_PROTOCOL_AND_SECURITY.md). Do not duplicate illustrative JSON with conflicting hash and domain semantics in this implementation backlog. External endpoint owners must sign compatible fixtures.
 
@@ -390,6 +390,6 @@ Definition of Done: <CI link, tests, logs, review approvals, documentation>
 2. **Locked TO-BE:** owner-supplied Agent architecture guide takes priority over legacy implementation, unless explicitly re-approved.
 3. **Approved TO-BE design:** `AGENT_PRODUCT_REQUIREMENTS.md` is canonical for product decisions; `AGENT_ARCHITECTURE.md` for design boundaries; `AGENT_SQLITE_SCHEMA.md` and `AGENT_PROTOCOL_AND_SECURITY.md` for their respective contracts; `AGENT_ACCEPTANCE_AND_TEST_MATRIX.md` for test requirements.
 4. **This file** is the **single execution backlog and implementation sequence**, not an alternative system architecture. Do not create a redundant `AGENT_IMPLEMENTATION_PLAN.md`. Change IDs or gate criteria only with documented owner approval and linked impact analysis.
-5. Require small PRs, review of real file/line impacts, explicit version/migration handling and evidence. This file is documentation; **no Agent code, repository release, service or production server changes are authorized by it**.
+5. Require small PRs, review of real file/line impacts, explicit fresh-install/schema-version handling and evidence. This file is documentation; **no Agent code, repository release, service or production server changes are authorized by it**.
 
 **Backlog completeness criterion:** Every mandatory product behavior has a ticket, acceptance ID, dependency, negative-path test and gate. Anything needed to ship but missing here is a scope blocker to add through reviewed backlog change—not an implicit “developer choice.”
