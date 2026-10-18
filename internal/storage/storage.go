@@ -312,6 +312,7 @@ func (s *Store) Finalize(ctx context.Context, now time.Time) error {
 	rows, e := s.db.QueryContext(ctx, `SELECT DISTINCT effective_at_ms/60000*60000 FROM raw_samples
  WHERE saved=0 AND effective_at_ms/60000*60000+60000<=?
  AND NOT EXISTS (SELECT 1 FROM aggregates a WHERE a.resolution_seconds=60 AND a.period_start_ms=raw_samples.effective_at_ms/60000*60000)
+ AND NOT EXISTS (SELECT 1 FROM aggregates q WHERE q.resolution_seconds=900 AND q.period_start_ms=raw_samples.effective_at_ms/900000*900000)
  ORDER BY 1 LIMIT 128`, cutoff)
 	if e != nil {
 		return e
@@ -372,6 +373,14 @@ func (s *Store) minute(ctx context.Context, start, now int64) error {
 	e = tx.QueryRowContext(ctx, "SELECT 1 FROM aggregates WHERE resolution_seconds=60 AND period_start_ms=?", start).Scan(&exists)
 	if e == nil {
 		return fmt.Errorf("late unsaved raw in immutable minute %d (operator review required)", start)
+	}
+	if !errors.Is(e, sql.ErrNoRows) {
+		return e
+	}
+	// No minute can be reopened after its enclosing 900s final was committed.
+	e = tx.QueryRowContext(ctx, "SELECT 1 FROM aggregates WHERE resolution_seconds=900 AND period_start_ms=?", aligned(start, 900000)).Scan(&exists)
+	if e == nil {
+		return fmt.Errorf("late raw in finalized quarter %d (operator review required)", aligned(start, 900000))
 	}
 	if !errors.Is(e, sql.ErrNoRows) {
 		return e
@@ -563,7 +572,7 @@ func (s *Store) Status(ctx context.Context, now time.Time) (StorageStatus, error
 	if oldest.Valid {
 		st.OldestPendingMS = &oldest.Int64
 	}
-	if e := s.db.QueryRowContext(ctx, `SELECT count(*) FROM raw_samples r WHERE r.saved=0 AND EXISTS (SELECT 1 FROM aggregates a WHERE a.resolution_seconds=60 AND a.period_start_ms=r.effective_at_ms/60000*60000)`).Scan(&st.LateRaw); e != nil {
+	if e := s.db.QueryRowContext(ctx, `SELECT count(*) FROM raw_samples r WHERE r.saved=0 AND EXISTS (SELECT 1 FROM aggregates a WHERE (a.resolution_seconds=60 AND a.period_start_ms=r.effective_at_ms/60000*60000) OR (a.resolution_seconds=900 AND a.period_start_ms=r.effective_at_ms/900000*900000))`).Scan(&st.LateRaw); e != nil {
 		return st, e
 	}
 	var freePages, pageSize int64
