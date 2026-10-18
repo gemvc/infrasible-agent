@@ -5,7 +5,8 @@
 ## Source of truth
 
 - [Installation](docs/INSTALLATION.md) — obtain verified CI artifacts, install systemd service and initialize the host.
-- [Configuration](docs/CONFIGURATION.md) — JSON schema, certificate prerequisites and current limits.
+- [Configuration & Desktop connection workflow](docs/CONFIGURATION.md) — exact v0.3.0 JSON, existing-SSH setup sequence, Relay registration dependencies and operator controls.
+- [Actual v0.3.0 wire vs proposed Relay protocol](docs/design/AGENT_PROTOCOL_AND_SECURITY.md#12-v030-executable-wire-vs-target-protocol--integration-handoff) — implementer handoff and integration blockers.
 - [Operations](docs/DAEMON_RUNBOOK.md) — health, storage inspection, safe cleanup and troubleshooting.
 - [Product requirements](docs/design/AGENT_PRODUCT_REQUIREMENTS.md), [Architecture](docs/design/AGENT_ARCHITECTURE.md), [SQLite contract](docs/design/AGENT_SQLITE_SCHEMA.md), [Network/security contract](docs/design/AGENT_PROTOCOL_AND_SECURITY.md), [Acceptance tests](docs/design/AGENT_ACCEPTANCE_AND_TEST_MATRIX.md), and [Backlog](docs/design/AGENT_IMPLEMENTATION_BACKLOG.md) — approved targets; **not all requirements are implemented or accepted**.
 
