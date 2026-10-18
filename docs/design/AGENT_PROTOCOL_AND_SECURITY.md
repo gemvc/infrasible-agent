@@ -15,7 +15,7 @@
 | Agent outgoing buffer | small, non-durable, drop oldest (engineering initial 2) | SQLite pending predicate, oldest-first; one active submission initially |
 | ACK | optional transport/live receipt; never durable-history proof | authenticated ACK matching agent/period/record/hash/domain and durable commit |
 | Failure | reconnect; no historical stream replay | keep local Pending; replay exact unchanged payload |
-| Server switching | any eligible authorized Live endpoint | only eligible authorized endpoint in same **verified** shared persistence/dedup domain |
+| Server switching | **None for Live:** retry the single authorized Relay | Persistence destination changes only under existing verified domain authorization |
 | Inbound | Agent opens all connections; no Agent public listener | same |
 
 All operational endpoints are authenticated and **authorized**. Certificate validity does not automatically grant Agent, host, channel, domain or action permission. Reject plaintext, invalid hostname/SNI, mismatched trust CA, expired/revoked identity, unsupported protocol major, oversized payload and wrong Agent registration.
@@ -283,3 +283,7 @@ Configuration edit, validation, resource-limit provisioning and storage status/s
 Configuration replacement is atomic (staged file, validated policy, fsync/rename where supported), with auditable revision and explicit active/effective status. A malformed or unauthorized config must not silently replace the active validated snapshot. Only trusted, authorized operators may apply systemd drop-ins; non-root Agent must not self-elevate. Privileged processes should receive narrowly scoped inputs, never arbitrary shell fragments or SQL from the Desktop.
 
 A proposed local administrative CLI may later support `config validate`, `config status`, `storage status`, `storage cleanup --dry-run` and `storage cleanup --safe`; **names and exact JSON envelope are design candidates**, not implemented commands or approved v2 wire contracts. Operators must see whether CPU/memory quotas are *desired* or verified *effective*. Storage cleanup is ACK/retention/lineage guarded, bounded, auditable, redacted and never deletes unACKed Pending. Host CPU/RAM/disk alert thresholds are Desktop-owned evaluation policy, not permissions to mutate host resources. No enrollment key/token is read into a user-facing diagnostics response.
+
+## Revised Live endpoint policy — single Relay (2026-10-18)
+
+Exactly one Live WSS Relay URL per Agent configuration; Desktop connects to that Relay to subscribe. Never elect/forward to another Relay or keep standby Live endpoints. When unreachable, Live stops; bounded retry to **same** endpoint and resubscription recover future frames only, with explicit gaps. Earlier multi-Relay Live examples, priority, failover and failback text are superseded and must be rewritten as one-URL examples before G00. Persistence HTTPS, mTLS, identity/ACL, domain validation and immutable ACK semantics are unaffected.
