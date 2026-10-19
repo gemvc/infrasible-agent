@@ -20,13 +20,18 @@ jobs:
           go-version-file: go.mod
           # Avoid noisy "Failed to restore … tar" annotations from a bad Go module cache.
           cache: false
-      - name: Match tag to version.go
+      - name: Match tag to VERSION.md
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          SOURCE="$(sed -n 's/^const agentVersion = "\([^"]*\)"/\1/p' version.go)"
+          SOURCE="$(tr -d ' \t\r\n' <VERSION.md)"
+          GO_VER="$(sed -n 's/^const agentVersion = "\([^"]*\)"/\1/p' version.go)"
           [[ "$VERSION" == "$SOURCE" ]] || {
-            echo "Tag v$VERSION must match version.go ($SOURCE)"
+            echo "Tag v$VERSION must match VERSION.md ($SOURCE)"
+            exit 1
+          }
+          [[ "$SOURCE" == "$GO_VER" ]] || {
+            echo "VERSION.md ($SOURCE) != version.go ($GO_VER)"
             exit 1
           }
           if gh release view "v$VERSION" >/dev/null 2>&1; then

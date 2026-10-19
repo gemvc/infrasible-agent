@@ -2,7 +2,7 @@
 
 > **Note:** Target/acceptance text below. For current shipped behavior and verdict see [STATUS.md](../STATUS.md), [README](../../README.md), and operator docs under `docs/`. Relay builders: [MONITORING_RELAY.md](MONITORING_RELAY.md).
 
-**Status:** target baseline; central Relay/PKI/Persistence still need external sign-off. Agent v0.3.8 implements clients + mocks (Hello Live path lab-proven). **Related:** [MONITORING_RELAY.md](MONITORING_RELAY.md), [STATUS.md](../STATUS.md), [Requirements](AGENT_PRODUCT_REQUIREMENTS.md), [Architecture](AGENT_ARCHITECTURE.md), [SQLite](AGENT_SQLITE_SCHEMA.md), [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).
+**Status:** target baseline; central Relay/PKI/Persistence still need external sign-off. What the Agent actually ships today: [STATUS.md](../STATUS.md). Semver: [`VERSION.md`](../../VERSION.md). **Related:** [MONITORING_RELAY.md](MONITORING_RELAY.md), [Requirements](AGENT_PRODUCT_REQUIREMENTS.md), [Architecture](AGENT_ARCHITECTURE.md), [SQLite](AGENT_SQLITE_SCHEMA.md), [Collector families](COLLECTOR_FAMILIES.md), [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md), [DOCUMENTATION.md](../DOCUMENTATION.md).
 
 ## 1. Wire and trust boundaries
 
@@ -284,9 +284,9 @@ Configuration replacement is atomic (staged file, validated policy, fsync/rename
 
 A proposed local administrative CLI may later support `config validate`, `config status`, `storage status`, `storage cleanup --dry-run` and `storage cleanup --safe`; **names and exact JSON envelope are design candidates**, not implemented commands or approved v2 wire contracts. Operators must see whether CPU/memory quotas are *desired* or verified *effective*. Storage cleanup is ACK/retention/lineage guarded, bounded, auditable, redacted and never deletes unACKed Pending. Host CPU/RAM/disk alert thresholds are Desktop-owned evaluation policy, not permissions to mutate host resources. No enrollment key/token is read into a user-facing diagnostics response.
 
-## 12. v0.3.0 executable wire vs target protocol — integration handoff
+## 12. Executable wire vs target protocol — integration handoff
 
-**Relay builders start here for executable wire; prefer [MONITORING_RELAY.md](MONITORING_RELAY.md) for a standalone how-to.** Sections 1–11 are the owner-approved **target**. This section states what Agent **v0.3.8** actually sends today.
+**Relay builders start here for executable wire; prefer [MONITORING_RELAY.md](MONITORING_RELAY.md) for a standalone how-to.** Sections 1–11 are the owner-approved **target**. This section states what the **current Agent release** actually sends (see [STATUS.md](../STATUS.md); do not treat section titles as version stamps).
 
 ### Current Live request — implemented Agent output
 
@@ -319,7 +319,7 @@ Application heartbeat (interval from `hello_accepted.heartbeat_seconds`):
 { "type": "heartbeat", "sent_at_utc": "2026-10-18T12:00:00Z" }
 ```
 
-`frame.metrics` holds only fields the collector emitted on that tick; metric values may be scalar or objects. Status `valid` and `error` are used by the current collector; the richer proposed quality/cadence/freshness envelope is **not** currently serialized. The collector uses 1-second CPU/memory/network/disk probes, 5-second Load and 30-second filesystem probes. The runtime Live buffer is capacity 2 with old-frame drop on pressure. Relays **must** accept Hello then `type: live` (or provide an explicit temporary adapter). A Relay that only understands proposed `live_sample` without Hello **will not interoperate as-is**. Desktop subscriber protocol and registrar ACL beyond Hello identity checks remain external.
+`frame.metrics` holds only fields the collector emitted on that tick; metric values may be scalar or objects. Status `valid` and `error` are used by the current collector; the richer proposed quality/cadence/freshness envelope is **not** currently serialized. Enabled families are selected via config `enabled_families` (compile-time `Family` modules — see [COLLECTOR_FAMILIES.md](COLLECTOR_FAMILIES.md)). Default probes: 1-second CPU/memory/network/disk, 5-second Load, 30-second filesystem. The runtime Live buffer is capacity 2 with old-frame drop on pressure. Relays **must** accept Hello then `type: live` (or provide an explicit temporary adapter). A Relay that only understands proposed `live_sample` without Hello **will not interoperate as-is**. Desktop subscriber protocol and registrar ACL beyond Hello identity checks remain external.
 
 **Relay ingress implementation dependency:** jointly specify strict message schema, bounded message size, host/Agent registration ACL, negotiated version and heartbeat, duplicate/gap semantics, and temporary compatibility for `type=live` after Hello. Label that compatibility an explicitly tested *temporary* adapter, not an undocumented production contract. Relay must relay to authenticated Desktop subscribers, not store monitoring history. Subscriber URLs/handshakes and authorization are unverified and belong to the Relay/Desktop implementations.
 
@@ -367,7 +367,7 @@ The current code accepts **only HTTP 200** and decodes an ACK with these exact J
 
 The Agent checks `durable=true` and exact equality of `agent_id`, `record_id`, `payload_sha256`, `period_start_ms`, `persistence_domain` and `schema_version=2` before marking its row acknowledged. Current code does not carry a signed independent database proof; **actual durability and registration authorization are obligations of the authenticated central API and still require external signoff**. A returned `200` without matching ACK never advances `persisted_at`. For a lost ACK the Agent retries the identical stored bytes; the central service must enforce uniqueness/idempotence by record ID and hash.
 
-The section-6 proposed `durable_ack` envelope (including `type`, `period_start_utc`, `committed_at_utc`) is **not** the v0.3.0 decoder's format. Central API owners must choose and approve a single interoperable contract and write cross-repository fixtures/tests before treating the final release as accepted.
+The section-6 proposed `durable_ack` envelope (including `type`, `period_start_utc`, `committed_at_utc`) is **not** the format the Agent's Persistence ACK decoder accepts today. Central API owners must choose and approve a single interoperable contract and write cross-repository fixtures/tests before treating the final release as accepted.
 
 ### Current failover and connection limitations
 
@@ -392,4 +392,4 @@ The section-6 proposed `durable_ack` envelope (including `type`, `period_start_u
 | Desktop reads historical charts | Requests Historical API, not Live Relay nor direct Agent SQLite |
 | Certificate expires/revokes / host cloned | No unauthorized connection; explicit re-enrollment or quarantine by external authority |
 
-**Release impact:** This section is the implementer-facing reality check for v0.3.0. The target section-4/5/6 envelopes remain proposed. They must not silently be presented as implemented; discrepancies are integration blockers, not mere wording differences. For the executable local setup sequence see [Configuration](../CONFIGURATION.md).
+**Release impact:** This section is the implementer-facing reality check for the executable Agent. The target section-4/5/6 envelopes remain proposed. They must not silently be presented as implemented; discrepancies are integration blockers, not mere wording differences. For the executable local setup sequence see [Configuration](../CONFIGURATION.md). Ship claims: [STATUS.md](../STATUS.md).

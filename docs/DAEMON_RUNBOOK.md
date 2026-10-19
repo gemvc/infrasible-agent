@@ -10,7 +10,7 @@ sudo journalctl -u infrasible-agent -n 100 --no-pager
 sudo systemctl restart infrasible-agent
 ```
 
-Unit runs `infrasible-agent run --config=/etc/infrasible-agent/config.json` as user `infrasible-agent`, DB at `/var/lib/infrasible-agent/agent.db`. All channels outbound. Empty `monitoring_servers` = offline collection. PKI rotation is not automated.
+Unit runs `infrasible-agent run --config=/etc/infrasible-agent/config.json` as user `infrasible-agent`, DB at `/var/lib/infrasible-agent/agent.db`. All channels outbound. Empty `monitoring_servers` = offline collection. Optional `enabled_families` selects metric modules at process start (omit = all default Linux families); config changes require `systemctl restart`. PKI rotation is not automated.
 
 ## Operator commands
 
@@ -36,3 +36,4 @@ sudo -u infrasible-agent infrasible-agent storage cleanup --safe --config=/etc/i
 - Live credentials rejected: client key must be regular file, mode `0600`, owned by service user.
 - Pending forever: check Persistence ACK contract (HTTP 200 alone is insufficient).
 - Live reconnect loops: Relay must accept Hello then `type: live` and send heartbeats — [MONITORING_RELAY.md](design/MONITORING_RELAY.md).
+- Config changed but metrics/endpoints unchanged: no hot reload — validate, then `systemctl restart infrasible-agent`. Confirm `enabled_families` in startup journal and in `config validate` JSON.

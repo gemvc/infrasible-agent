@@ -5,7 +5,7 @@
 
 **Companion (Persistence is separate):** Agents also POST 15‑minute finals to a **Persistence API**. That is not the Relay. Do not store monitoring history in the Relay.
 
-**Executable Agent wire (v0.3.8):** Hello + heartbeats + `type: live` frames. Target `live_sample` schema is future; accept `type: live` after Hello today.
+**Executable Agent wire (current release):** Hello + heartbeats + `type: live` frames. Target `live_sample` schema is future; accept `type: live` after Hello today. Agent semver: [`VERSION.md`](../../VERSION.md). Ship verdict: [STATUS.md](../STATUS.md).
 
 ---
 
@@ -19,7 +19,7 @@
 | Persistence durable ACK / domain HA | **External** — not Relay scope |
 | Production monitoring path | **Blocked** on central contracts, not on Agent packaging |
 
-Lab proof (2026-10-19): published Agent **v0.3.8** completed `agent_hello` → `hello_accepted` → `type: live` + application heartbeats against an mTLS mock Bridge.
+Lab proof (2026-10-19): published Agent **v0.3.8** completed `agent_hello` → `hello_accepted` → `type: live` + application heartbeats against an mTLS mock Bridge. Later releases keep the same Live wire unless [STATUS.md](../STATUS.md) says otherwise; metric keys may vary with `enabled_families`.
 
 ---
 
@@ -117,7 +117,7 @@ Design for **N Agents × 1 Live WSS each**, plus Desktop subscriber fan-out.
 
 ---
 
-## 4. Wire protocol you must implement (Agent v0.3.8)
+## 4. Wire protocol you must implement (current executable Agent)
 
 ### 4.1 Connect
 

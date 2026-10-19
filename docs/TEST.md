@@ -1,16 +1,29 @@
-From the repo root:
+# Running tests
 
+From the repository root.
 
+## Full suite (local)
+
+```sh
 go test ./...
-That runs every package once (same baseline used locally after the collector refactor).
+```
 
-Closer to CI (race detector, no cached results):
+Runs every package once.
 
+## CI-equivalent
 
+```sh
 go test -race -count=1 ./...
-That matches .github/workflows/ci.yml.
+```
 
-Optional local gate (fmt, tidy, vet, tests — as in docs/CI_CD.md):
+Matches [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) (race detector, no cached results).
 
+## Full local gate (fmt + tidy + vet + race tests)
 
+```sh
 bash scripts/ci-cd.sh check
+```
+
+Same checks used before a version bump. See [CI_CD.md](CI_CD.md).
+
+If Agent CI fails on `gofmt`, run `gofmt -w .` and confirm `gofmt -l .` prints nothing before pushing.

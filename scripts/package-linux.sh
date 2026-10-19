@@ -2,8 +2,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p dist
-VERSION="$(sed -n 's/^const agentVersion = "\([^"]*\)"/\1/p' version.go)"
-[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid agent version" >&2; exit 1; }
+VERSION="$(tr -d ' \t\r\n' <VERSION.md)"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid VERSION.md" >&2; exit 1; }
+GO_VER="$(sed -n 's/^const agentVersion = "\([^"]*\)"/\1/p' version.go)"
+[[ "$VERSION" == "$GO_VER" ]] || { echo "VERSION.md ($VERSION) != version.go ($GO_VER)" >&2; exit 1; }
 if [[ -n "${GITHUB_REF_NAME:-}" && "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
   [[ "$GITHUB_REF_NAME" == "v$VERSION" ]] || { echo "Tag does not match agent version" >&2; exit 1; }
 fi

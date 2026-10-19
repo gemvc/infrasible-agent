@@ -9,12 +9,14 @@
 #   bash scripts/ci-cd.sh check             # optional local gate
 #   bash scripts/ci-cd.sh help
 #
-# See docs/CI_CD.md
+# Semver single source of truth: VERSION.md (one line, X.Y.Z).
+# See docs/CI_CD.md and docs/DOCUMENTATION.md
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 CMD="${1:-help}"
+VERSION_FILE="VERSION.md"
 
 die() { echo "error: $*" >&2; exit 1; }
 info() { echo "==> $*"; }
@@ -24,7 +26,17 @@ need_gh() {
   command -v gh >/dev/null 2>&1 || die "gh CLI required (brew install gh && gh auth login)"
 }
 
+# agent_version reads the sole human/release SSOT: VERSION.md
 agent_version() {
+  [[ -f "$VERSION_FILE" ]] || die "missing $VERSION_FILE"
+  local ver
+  ver="$(tr -d ' \t\r\n' <"$VERSION_FILE")"
+  [[ -n "$ver" ]] || die "$VERSION_FILE is empty"
+  echo "$ver"
+}
+
+# go_agent_version reads the compiled constant (must match VERSION.md).
+go_agent_version() {
   sed -n 's/^const agentVersion = "\([^"]*\)"/\1/p' version.go
 }
 
@@ -78,36 +90,40 @@ fmt_tidy_vet_test() {
   go test -race -count=1 ./...
 }
 
+# set_version_files writes VERSION.md (SSOT) then syncs version.go for the binary.
 set_version_files() {
   local ver="$1"
   local tmp
-  [[ -n "$(agent_version)" ]] || die "could not read agentVersion from version.go"
+  require_semver "$ver"
+
+  printf '%s\n' "$ver" >"$VERSION_FILE"
+  [[ "$(agent_version)" == "$ver" ]] || die "failed to write $VERSION_FILE"
 
   tmp="$(mktemp)"
   sed "s/^const agentVersion = \".*\"/const agentVersion = \"$ver\"/" version.go >"$tmp"
   mv "$tmp" version.go
+  [[ "$(go_agent_version)" == "$ver" ]] || die "failed to sync version.go to $ver"
+}
 
-  tmp="$(mktemp)"
-  awk -v ver="$ver" '
-    /if agentVersion !=/ { print "\tif agentVersion != \"" ver "\" {"; next }
-    { print }
-  ' version_test.go >"$tmp"
-  mv "$tmp" version_test.go
-
-  [[ "$(agent_version)" == "$ver" ]] || die "failed to set version.go to $ver"
-  grep -q "agentVersion != \"$ver\"" version_test.go || die "failed to update version_test.go"
+assert_version_in_sync() {
+  local file_ver go_ver
+  file_ver="$(agent_version)"
+  go_ver="$(go_agent_version)"
+  [[ "$file_ver" == "$go_ver" ]] || die "$VERSION_FILE ($file_ver) != version.go ($go_ver) — run: bash scripts/ci-cd.sh version $file_ver"
 }
 
 cmd_last() {
   local source_ver tag gh_ver
   source_ver="$(agent_version)"
+  assert_version_in_sync
   tag="$(latest_tag)"
   gh_ver=""
   if command -v gh >/dev/null 2>&1; then
     gh_ver="$(gh release view --json tagName -q .tagName 2>/dev/null || true)"
   fi
 
-  echo "version.go:            $source_ver"
+  echo "VERSION.md:            $source_ver"
+  echo "version.go (synced):   $(go_agent_version)"
   echo "latest git tag:        ${tag:-"(none)"}"
   echo "latest GitHub Release: ${gh_ver:-"(none or gh unavailable)"}"
   echo
@@ -118,6 +134,7 @@ cmd_last() {
 
 cmd_check() {
   guardrails
+  assert_version_in_sync
   fmt_tidy_vet_test
   ok "local verify passed"
 }
@@ -129,7 +146,7 @@ cmd_version() {
 
   local current
   current="$(agent_version)"
-  [[ "$ver" != "$current" ]] || die "version.go is already $ver"
+  [[ "$ver" != "$current" ]] || die "$VERSION_FILE is already $ver"
 
   local branch
   branch="$(git rev-parse --abbrev-ref HEAD)"
@@ -143,8 +160,8 @@ cmd_version() {
     die "origin already has tag v$ver — pick a new version"
   fi
 
-  echo "Bump agentVersion: $current → $ver (commit + push to origin/main)"
-  if ! confirm "Update version.go / version_test.go, commit, and git push?"; then
+  echo "Bump version: $current → $ver (VERSION.md + sync version.go; commit + push to origin/main)"
+  if ! confirm "Update $VERSION_FILE (and sync version.go), commit, and git push?"; then
     die "cancelled"
   fi
 
@@ -152,7 +169,7 @@ cmd_version() {
   guardrails
   fmt_tidy_vet_test
 
-  git add version.go version_test.go
+  git add "$VERSION_FILE" version.go
   git commit -m "chore(release): prepare Infrasible Agent v$ver"
   ok "committed version bump to $ver"
 
@@ -188,11 +205,12 @@ cmd_release() {
   require_semver "$ver"
 
   guardrails
+  assert_version_in_sync
   fmt_tidy_vet_test
 
   local source_ver
   source_ver="$(agent_version)"
-  [[ "$ver" == "$source_ver" ]] || die "version.go is $source_ver but you passed $ver — run: bash scripts/ci-cd.sh version $ver"
+  [[ "$ver" == "$source_ver" ]] || die "$VERSION_FILE is $source_ver but you passed $ver — run: bash scripts/ci-cd.sh version $ver"
 
   local branch
   branch="$(git rev-parse --abbrev-ref HEAD)"
@@ -233,18 +251,19 @@ cmd_help() {
   cat <<'EOF'
 scripts/ci-cd.sh
 
+Semver SSOT: VERSION.md (one line, X.Y.Z). version.go is synced from it.
+
 Daily (you):
   git add … && git commit -m "…" && git push
 
 New release:
   bash scripts/ci-cd.sh last
-  bash scripts/ci-cd.sh version X.Y.Z    # bump + commit + push + watch CI
+  bash scripts/ci-cd.sh version X.Y.Z    # write VERSION.md + sync version.go + CI
   bash scripts/ci-cd.sh release X.Y.Z    # tag + push + watch Agent Release
 
 Optional:
   bash scripts/ci-cd.sh watch
   bash scripts/ci-cd.sh web
-
   bash scripts/ci-cd.sh check
   bash scripts/ci-cd.sh help
 EOF

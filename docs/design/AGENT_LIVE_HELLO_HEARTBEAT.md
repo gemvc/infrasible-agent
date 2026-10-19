@@ -1,6 +1,6 @@
 # Live Hello and Heartbeat
 
-**Status:** implemented (Agent ≥ 0.3.5; lab-proven with published **v0.3.8**).  
+**Status:** implemented. Lab-proven with published **v0.3.8** (2026-10-19). Current ship / verdict: [STATUS.md](../STATUS.md). Semver: [`VERSION.md`](../../VERSION.md).  
 **Scope:** Agent outbound Live WSS (`internal/transport`).  
 **Relay implementers:** use [MONITORING_RELAY.md](MONITORING_RELAY.md) — you do not need this file.
 

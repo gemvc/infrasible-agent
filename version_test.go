@@ -1,10 +1,24 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
-func TestAgentVersion(t *testing.T) {
-	if agentVersion != "0.4.0" {
-		t.Fatalf("unexpected agent version: %s", agentVersion)
+// TestAgentVersionMatchesVERSIONMD keeps VERSION.md as the single semver source:
+// scripts/ci-cd.sh writes that file; version.go must match it.
+func TestAgentVersionMatchesVERSIONMD(t *testing.T) {
+	raw, err := os.ReadFile("VERSION.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.TrimSpace(string(raw))
+	if want == "" {
+		t.Fatal("VERSION.md is empty")
+	}
+	if agentVersion != want {
+		t.Fatalf("agentVersion=%q does not match VERSION.md=%q", agentVersion, want)
 	}
 }
 

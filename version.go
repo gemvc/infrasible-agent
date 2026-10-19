@@ -2,6 +2,8 @@
 package main
 
 // agentVersion is the semver stamped into packages and release tags.
+// Single source of truth for humans and release tooling is VERSION.md;
+// scripts/ci-cd.sh version keeps this constant in sync.
 const agentVersion = "0.4.0"
 
 // protocolMajor is the daemon wire protocol major version.

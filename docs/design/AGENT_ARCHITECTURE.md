@@ -2,7 +2,7 @@
 
 > **Note:** Target/acceptance text below. For current shipped behavior and verdict see [STATUS.md](../STATUS.md), [README](../../README.md), and operator docs under `docs/`. Relay builders: [MONITORING_RELAY.md](MONITORING_RELAY.md).
 
-**Status:** approved target architecture. Shipped Agent is v0.3.8 (see [STATUS.md](../STATUS.md)). Production acceptance and external Relay/PKI gates pending. **Contracts:** [Product Requirements](AGENT_PRODUCT_REQUIREMENTS.md), [SQLite](AGENT_SQLITE_SCHEMA.md), [Protocol/Security](AGENT_PROTOCOL_AND_SECURITY.md), [Monitoring Relay](MONITORING_RELAY.md), [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).
+**Status:** approved target architecture. For what is shipped today see [STATUS.md](../STATUS.md) (not this file). Production acceptance and external Relay/PKI gates pending. **Contracts:** [Product Requirements](AGENT_PRODUCT_REQUIREMENTS.md), [SQLite](AGENT_SQLITE_SCHEMA.md), [Protocol/Security](AGENT_PROTOCOL_AND_SECURITY.md), [Monitoring Relay](MONITORING_RELAY.md), [Collector families](COLLECTOR_FAMILIES.md), [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md). Doc map: [DOCUMENTATION.md](../DOCUMENTATION.md).
 
 ## 1. System context, trust boundaries and ownership
 

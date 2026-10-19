@@ -4,12 +4,13 @@
 
 ## Get a package
 
-From a [GitHub Release](https://github.com/gemvc/infrasible-agent/releases) (`bash scripts/ci-cd.sh release X.Y.Z`), or build locally with `bash scripts/package-linux.sh`. Match arch via `uname -m` / `dpkg --print-architecture` (e.g. `infrasible-agent_0.3.8_amd64.deb` or `_arm64.deb`). Verify `SHA256SUMS` when present (integrity only, not publisher auth).
+From a [GitHub Release](https://github.com/gemvc/infrasible-agent/releases) (`bash scripts/ci-cd.sh release X.Y.Z`), or build locally with `bash scripts/package-linux.sh`. Current semver is only in [`VERSION.md`](../VERSION.md) (`bash scripts/ci-cd.sh last`). Match arch via `uname -m` / `dpkg --print-architecture`. Artifact names look like `infrasible-agent_<VERSION>_amd64.deb` or `_arm64.deb`. Verify `SHA256SUMS` when present (integrity only, not publisher auth).
 
 ## Install (Debian/Ubuntu)
 
 ```sh
-sudo apt install ./infrasible-agent_0.3.8_amd64.deb   # or arm64
+# <VERSION> and arch = the Release asset you downloaded (or scripts/package-linux.sh output)
+sudo apt install ./infrasible-agent_<VERSION>_amd64.deb   # or arm64
 sudo /usr/bin/infrasible-agent config validate --config=/etc/infrasible-agent/config.json
 sudo systemctl enable --now infrasible-agent
 sudo systemctl status infrasible-agent --no-pager
