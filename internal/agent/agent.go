@@ -18,15 +18,16 @@ import (
 
 // Agent is the daemon runtime wiring collector, store, and network workers.
 type Agent struct {
-	Config    config.Config
-	Store     *storage.Store
-	Collector collector.Reader
-	Log       *slog.Logger
+	Config       config.Config
+	Store        *storage.Store
+	Collector    collector.Reader
+	Log          *slog.Logger
+	AgentVersion string
 }
 
 // New builds an Agent with a Linux collector and the provided store and logger.
-func New(c config.Config, s *storage.Store, l *slog.Logger) *Agent {
-	return &Agent{Config: c, Store: s, Collector: collector.NewLinux(), Log: l}
+func New(c config.Config, s *storage.Store, l *slog.Logger, agentVersion string) *Agent {
+	return &Agent{Config: c, Store: s, Collector: collector.NewLinux(), Log: l, AgentVersion: agentVersion}
 }
 
 // enqueueLatest keeps only the newest frame in a bounded Live channel.
@@ -51,7 +52,7 @@ func enqueueLatest(live chan collector.Frame, f collector.Frame) {
 func (a *Agent) Run(ctx context.Context) error {
 	live := make(chan collector.Frame, 2)
 	var workers sync.WaitGroup
-	sender := transport.Sender{Servers: a.Config.MonitoringServers, Store: a.Store, Log: a.Log}
+	sender := transport.Sender{Servers: a.Config.MonitoringServers, Store: a.Store, Log: a.Log, AgentVersion: a.AgentVersion}
 	workers.Add(2)
 	go func() { defer workers.Done(); sender.Live(ctx, live) }()
 	go func() { defer workers.Done(); sender.Persistence(ctx) }()

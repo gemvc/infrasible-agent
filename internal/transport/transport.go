@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -24,11 +25,24 @@ import (
 	"github.com/gemvc/infrasible-agent/internal/storage"
 )
 
+const (
+	liveProtocolMajor = 2
+	liveProtocolMinor = 0
+	// maxLiveHeartbeatSeconds rejects negotiated intervals that would stall
+	// fail-closed reconnect for an unreasonable time (documented in contract tests).
+	maxLiveHeartbeatSeconds = 300
+)
+
+// liveHelloTimeout bounds waiting for hello_accepted after agent_hello.
+// Tests may shorten this unexported variable.
+var liveHelloTimeout = 10 * time.Second
+
 // Sender delivers Live frames and Persistence finals using configured endpoints.
 type Sender struct {
-	Servers []config.Server
-	Store   *storage.Store
-	Log     *slog.Logger
+	Servers      []config.Server
+	Store        *storage.Store
+	Log          *slog.Logger
+	AgentVersion string
 }
 
 // ACK is the durable Persistence acknowledgment required before local persisted_at.
@@ -40,6 +54,30 @@ type ACK struct {
 	PeriodStartMS     int64  `json:"period_start_ms"`
 	PersistenceDomain string `json:"persistence_domain"`
 	SchemaVersion     int    `json:"schema_version"`
+}
+
+type agentHello struct {
+	Type           string   `json:"type"`
+	ProtocolMajor  int      `json:"protocol_major"`
+	ProtocolMinor  int      `json:"protocol_minor"`
+	AgentID        string   `json:"agent_id"`
+	AgentVersion   string   `json:"agent_version"`
+	Channel        string   `json:"channel"`
+	SchemaVersions []string `json:"schema_versions"`
+	Capabilities   []string `json:"capabilities"`
+	SentAtUTC      string   `json:"sent_at_utc"`
+}
+
+type helloAccepted struct {
+	Type              string `json:"type"`
+	ProtocolMajor     int    `json:"protocol_major"`
+	ProtocolMinor     int    `json:"protocol_minor"`
+	SchemaVersion     string `json:"schema_version"`
+	AuthorizedAgentID string `json:"authorized_agent_id"`
+	AuthorizedChannel string `json:"authorized_channel"`
+	EndpointID        string `json:"endpoint_id"`
+	HeartbeatSeconds  int    `json:"heartbeat_seconds"`
+	MaxMessageBytes   int    `json:"max_message_bytes"`
 }
 
 // tlsFor builds a TLS 1.3 client config from server identity files.
@@ -116,11 +154,16 @@ func (s *Sender) Live(ctx context.Context, frames <-chan collector.Frame) {
 				s.Log.Warn("live connect failed", "server", server.ID, "error", err)
 			} else {
 				s.Log.Info("live connected", "server", server.ID)
-				e = s.stream(ctx, conn, frames)
-				_ = conn.Close(websocket.StatusNormalClosure, "reconnecting")
-				if e != nil && ctx.Err() == nil {
-					s.Log.Warn("live stream ended", "error", e)
+				heartbeat, err := s.negotiateLive(ctx, conn)
+				if err != nil {
+					s.Log.Warn("live hello failed", "server", server.ID, "error", err)
+				} else {
+					e = s.stream(ctx, conn, frames, heartbeat)
+					if e != nil && ctx.Err() == nil {
+						s.Log.Warn("live stream ended", "error", e)
+					}
 				}
+				_ = conn.Close(websocket.StatusNormalClosure, "reconnecting")
 			}
 			client.CloseIdleConnections()
 		}
@@ -133,30 +176,145 @@ func (s *Sender) Live(ctx context.Context, frames <-chan collector.Frame) {
 	}
 }
 
-// stream writes live JSON envelopes until the context ends or the channel closes.
-func (s *Sender) stream(ctx context.Context, conn *websocket.Conn, frames <-chan collector.Frame) error {
+// negotiateLive sends agent_hello and validates hello_accepted before any live frames.
+func (s *Sender) negotiateLive(ctx context.Context, conn *websocket.Conn) (time.Duration, error) {
+	version := s.AgentVersion
+	if version == "" {
+		return 0, errors.New("agent version required for live hello")
+	}
+	hello := agentHello{
+		Type:           "agent_hello",
+		ProtocolMajor:  liveProtocolMajor,
+		ProtocolMinor:  liveProtocolMinor,
+		AgentID:        s.Store.AgentID(),
+		AgentVersion:   version,
+		Channel:        "live",
+		SchemaVersions: []string{"2.0"},
+		Capabilities:   []string{"live_1hz", "sample_quality", "metric_cadence_v1", "metric_freshness_v1"},
+		SentAtUTC:      time.Now().UTC().Format(time.RFC3339),
+	}
+	payload, err := json.Marshal(hello)
+	if err != nil {
+		return 0, err
+	}
+	writeCtx, cancelWrite := context.WithTimeout(ctx, 5*time.Second)
+	err = conn.Write(writeCtx, websocket.MessageText, payload)
+	cancelWrite()
+	if err != nil {
+		return 0, err
+	}
+	readCtx, cancelRead := context.WithTimeout(ctx, liveHelloTimeout)
+	_, data, err := conn.Read(readCtx)
+	cancelRead()
+	if err != nil {
+		return 0, fmt.Errorf("hello_accepted: %w", err)
+	}
+	return validateHelloAccepted(data, s.Store.AgentID())
+}
+
+// validateHelloAccepted fail-closes on type, protocol, identity, channel, or heartbeat bounds.
+// max_message_bytes is parsed when present but not enforced on outbound writes in this slice.
+func validateHelloAccepted(data []byte, agentID string) (time.Duration, error) {
+	var accepted helloAccepted
+	if err := json.Unmarshal(data, &accepted); err != nil {
+		return 0, err
+	}
+	if accepted.Type != "hello_accepted" {
+		return 0, fmt.Errorf("expected hello_accepted, got %q", accepted.Type)
+	}
+	if accepted.ProtocolMajor != liveProtocolMajor {
+		return 0, fmt.Errorf("unsupported protocol_major %d", accepted.ProtocolMajor)
+	}
+	if accepted.AuthorizedAgentID != agentID {
+		return 0, errors.New("authorized_agent_id mismatch")
+	}
+	if accepted.AuthorizedChannel != "live" {
+		return 0, fmt.Errorf("authorized_channel %q not live", accepted.AuthorizedChannel)
+	}
+	if accepted.HeartbeatSeconds <= 0 || accepted.HeartbeatSeconds > maxLiveHeartbeatSeconds {
+		return 0, fmt.Errorf("heartbeat_seconds out of range: %d", accepted.HeartbeatSeconds)
+	}
+	return time.Duration(accepted.HeartbeatSeconds) * time.Second, nil
+}
+
+// stream writes live JSON envelopes and application heartbeats until the context
+// ends, the channel closes, or the peer is silent for ~3× the heartbeat interval.
+func (s *Sender) stream(ctx context.Context, conn *websocket.Conn, frames <-chan collector.Frame, heartbeat time.Duration) error {
 	type live struct {
 		Type    string          `json:"type"`
 		AgentID string          `json:"agent_id"`
 		Frame   collector.Frame `json:"frame"`
 	}
+	type heartbeatMsg struct {
+		Type      string `json:"type"`
+		SentAtUTC string `json:"sent_at_utc"`
+	}
+
+	var lastPeerUnix atomic.Int64
+	lastPeerUnix.Store(time.Now().UnixNano())
+	silence := 3 * heartbeat
+
+	readErr := make(chan error, 1)
+	go func() {
+		for {
+			readCtx, cancel := context.WithTimeout(ctx, silence+time.Second)
+			_, _, err := conn.Read(readCtx)
+			cancel()
+			if err != nil {
+				readErr <- err
+				return
+			}
+			lastPeerUnix.Store(time.Now().UnixNano())
+		}
+	}()
+
+	ticker := time.NewTicker(heartbeat)
+	defer ticker.Stop()
+	silenceTicker := time.NewTicker(heartbeat)
+	defer silenceTicker.Stop()
+
+	writeText := func(payload []byte) error {
+		sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := conn.Write(sendCtx, websocket.MessageText, payload)
+		cancel()
+		return err
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case err := <-readErr:
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("live peer read: %w", err)
+		case <-silenceTicker.C:
+			last := time.Unix(0, lastPeerUnix.Load())
+			if time.Since(last) > silence {
+				return errors.New("live peer silent beyond 3x heartbeat")
+			}
+		case <-ticker.C:
+			payload, err := json.Marshal(heartbeatMsg{
+				Type:      "heartbeat",
+				SentAtUTC: time.Now().UTC().Format(time.RFC3339),
+			})
+			if err != nil {
+				return err
+			}
+			if err := writeText(payload); err != nil {
+				return err
+			}
 		case f, ok := <-frames:
 			if !ok {
 				return nil
 			}
-			payload, e := json.Marshal(live{Type: "live", AgentID: s.Store.AgentID(), Frame: f})
-			if e != nil {
-				return e
+			payload, err := json.Marshal(live{Type: "live", AgentID: s.Store.AgentID(), Frame: f})
+			if err != nil {
+				return err
 			}
-			sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			e = conn.Write(sendCtx, websocket.MessageText, payload)
-			cancel()
-			if e != nil {
-				return e
+			if err := writeText(payload); err != nil {
+				return err
 			}
 		}
 	}

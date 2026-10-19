@@ -70,7 +70,7 @@ func dispatch(args []string) error {
 		log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 		defer stop()
-		return agent.New(c, s, log).Run(ctx)
+		return agent.New(c, s, log, agentVersion).Run(ctx)
 	}
 	if len(args) == 2 && args[0] == "health" && args[1] == "status" {
 		s, e := storage.OpenExisting(c.DataPath)

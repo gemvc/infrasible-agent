@@ -293,7 +293,9 @@ A proposed local administrative CLI may later support `config validate`, `config
 
 ### Current Live request — implemented Agent output
 
-The Agent connects with `github.com/coder/websocket` to the configured `live_url` using outbound TLS 1.3 minimum, trusted CA, `server_name` verification and configured mTLS client cert/key. For each supplied fresh frame it currently writes this JSON **shape** as a WSS text message (field values illustrative):
+The Agent connects with `github.com/coder/websocket` to the configured `live_url` using outbound TLS 1.3 minimum, trusted CA, `server_name` verification and configured mTLS client cert/key. After dial it sends `agent_hello`, waits for `hello_accepted` (fail-closed on timeout, wrong identity/channel, unsupported `protocol_major`, or out-of-range `heartbeat_seconds`; bound ≤300s), then streams frames and application heartbeats. Peer silence beyond approximately **3×** `heartbeat_seconds` triggers reconnect. `max_message_bytes` from `hello_accepted` is accepted when present but **not** enforced on outbound writes in this slice.
+
+Hello / accept shapes match §4. Sample frames still use temporary `type: live` (not yet `live_sample`):
 
 ```json
 {
@@ -314,9 +316,15 @@ The Agent connects with `github.com/coder/websocket` to the configured `live_url
 }
 ```
 
-`frame.metrics` holds only fields the collector emitted on that tick; metric values may be scalar or objects. Status `valid` and `error` are used by the current collector; the richer proposed quality/cadence/freshness envelope is **not** currently serialized. The collector uses 1-second CPU/memory/network/disk probes, 5-second Load and 30-second filesystem probes. The runtime Live buffer is capacity 2 with old-frame drop on pressure. The current sender does **not** send `agent_hello`, wait for `hello_accepted`, implement application-level heartbeat/registration authorization or expose Desktop subscriber protocol. Therefore a central Relay built for the proposed `live_sample` contract **will not interoperate as-is** with this binary without a deliberately versioned adaptation or coordinated changes.
+Application heartbeat (interval from `hello_accepted.heartbeat_seconds`):
 
-**Relay ingress implementation dependency:** jointly specify strict message schema, bounded message size, host/Agent registration ACL, negotiated version and heartbeat, duplicate/gap semantics, and whether temporary compatibility for `type=live` is permitted. If permitted, label it an explicitly tested *temporary* compatibility adapter, not an undocumented production contract. Relay must relay to authenticated Desktop subscribers, not store monitoring history. Subscriber URLs/handshakes and authorization are unverified and belong to the Relay/Desktop implementations.
+```json
+{ "type": "heartbeat", "sent_at_utc": "2026-10-18T12:00:00Z" }
+```
+
+`frame.metrics` holds only fields the collector emitted on that tick; metric values may be scalar or objects. Status `valid` and `error` are used by the current collector; the richer proposed quality/cadence/freshness envelope is **not** currently serialized. The collector uses 1-second CPU/memory/network/disk probes, 5-second Load and 30-second filesystem probes. The runtime Live buffer is capacity 2 with old-frame drop on pressure. Relays **must** accept Hello then `type: live` (or provide an explicit temporary adapter). A Relay that only understands proposed `live_sample` without Hello **will not interoperate as-is**. Desktop subscriber protocol and registrar ACL beyond Hello identity checks remain external.
+
+**Relay ingress implementation dependency:** jointly specify strict message schema, bounded message size, host/Agent registration ACL, negotiated version and heartbeat, duplicate/gap semantics, and temporary compatibility for `type=live` after Hello. Label that compatibility an explicitly tested *temporary* adapter, not an undocumented production contract. Relay must relay to authenticated Desktop subscribers, not store monitoring history. Subscriber URLs/handshakes and authorization are unverified and belong to the Relay/Desktop implementations.
 
 ### Current Persistence request and ACK — implemented Agent behavior
 

@@ -8,7 +8,7 @@
 - [Installation](docs/INSTALLATION.md) — obtain verified CI artifacts, install systemd service and initialize the host.
 - [Configuration & Desktop connection workflow](docs/CONFIGURATION.md) — exact v0.3.1 JSON, existing-SSH setup sequence, Relay registration dependencies and operator controls.
 - [Actual v0.3.0/v0.3.1 wire vs proposed Relay protocol](docs/design/AGENT_PROTOCOL_AND_SECURITY.md#12-v030-executable-wire-vs-target-protocol--integration-handoff) — implementer handoff and integration blockers.
-- [Live Hello and Heartbeat implementation guide](docs/design/AGENT_LIVE_HELLO_HEARTBEAT.md) — planned next Live WSS slice (negotiate + heartbeat; keep `type: live` frames).
+- [Live Hello and Heartbeat implementation guide](docs/design/AGENT_LIVE_HELLO_HEARTBEAT.md) — implemented Live WSS negotiate + heartbeat (frames remain `type: live` until a later migration).
 - [Operations](docs/DAEMON_RUNBOOK.md) — health, storage inspection, safe cleanup and troubleshooting.
 - [Product requirements](docs/design/AGENT_PRODUCT_REQUIREMENTS.md), [Architecture](docs/design/AGENT_ARCHITECTURE.md), [SQLite contract](docs/design/AGENT_SQLITE_SCHEMA.md), [Network/security contract](docs/design/AGENT_PROTOCOL_AND_SECURITY.md), [Acceptance tests](docs/design/AGENT_ACCEPTANCE_AND_TEST_MATRIX.md), and [Backlog](docs/design/AGENT_IMPLEMENTATION_BACKLOG.md) — approved targets; **not all requirements are implemented or accepted**.
 
@@ -19,7 +19,7 @@ The implementation in source code takes precedence for *currently available comm
 - Linux systemd daemon with a single 1 Hz frame loop and due families: CPU, memory, network and disk I/O at 1s, load at 5s and filesystem capacity at 30s.
 - Three SQLite application tables (`server_info`, `raw_samples`, `aggregates`) in WAL/FULL mode with transactional minute and quarter-hour rollups and replayable pending 15-minute payloads.
 - Local CLI: `run`, `config validate`, `health status`, `storage status`, `storage cleanup --dry-run` and `storage cleanup --safe`.
-- Initial mTLS-protected outbound WebSocket and HTTP clients, packaging for Linux amd64, arm64, armv7 and armv6 (deb postinst creates user/dirs/config for staging), and an automated Go test/cross-build pipeline.
+- Initial mTLS-protected outbound WebSocket and HTTP clients with Live `agent_hello` / `hello_accepted` negotiation and application heartbeats (sample frames still `type: live`), packaging for Linux amd64, arm64, armv7 and armv6 (deb postinst creates user/dirs/config for staging), and an automated Go test/cross-build pipeline.
 
 ## Development milestone 0.3.1
 

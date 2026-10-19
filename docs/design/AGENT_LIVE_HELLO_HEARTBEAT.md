@@ -1,15 +1,15 @@
 # Live Hello and Heartbeat — Implementation Guide
 
-**Status:** planned next Agent slice after staging-ready v0.3.1 and mock Bridge/Persistence contract tests  
+**Status:** implemented 2026-10-19 (base `d441fd8`; Live Hello + application heartbeat in `internal/transport`)  
 **Scope:** outbound Live WSS only (`internal/transport`)  
 **Canonical target envelopes:** [AGENT_PROTOCOL_AND_SECURITY.md](AGENT_PROTOCOL_AND_SECURITY.md) §4–5  
-**Executable baseline today:** [AGENT_PROTOCOL_AND_SECURITY.md](AGENT_PROTOCOL_AND_SECURITY.md) §12 (`type: live` frames, no Hello)
+**Executable wire:** [AGENT_PROTOCOL_AND_SECURITY.md](AGENT_PROTOCOL_AND_SECURITY.md) §12 (`agent_hello` / `hello_accepted`, then `type: live` frames + `type: heartbeat`)
 
 This document tells implementers **how** to add Live Hello negotiation and application-level heartbeat without rewriting Persistence, SQLite, or collector code. It also records the **staging host preparation** operators should complete before exercising Live against a real or mock Bridge.
 
 ## 1. Staging preparation and install
 
-**Yes — install on a staging/test Linux host** to prove offline collection and later Hello against a mock or lab Bridge. **Do not** install on a production monitoring path yet: Hello is not implemented in the current binary, and central Bridge/PKI interoperability is not certified.
+**Yes — install on a staging/test Linux host** to prove offline collection and Hello against a mock or lab Bridge that accepts `agent_hello` then `type: live`. **Do not** install on a production monitoring path yet: central Bridge/PKI interoperability is not certified.
 
 Authoritative install detail: [INSTALLATION.md](../INSTALLATION.md). Summary below.
 
@@ -17,9 +17,9 @@ Authoritative install detail: [INSTALLATION.md](../INSTALLATION.md). Summary bel
 
 | Mode | Recommended? | Config |
 |---|---|---|
-| Offline staging (local SQLite only) | **Yes** — prep phase now | `"monitoring_servers": []` |
-| Live Hello against lab/mock Bridge | After this Hello slice lands | One `live_url` + mTLS files |
-| Production Monitoring Relay | **No** until Hello + external sign-off | — |
+| Offline staging (local SQLite only) | **Yes** | `"monitoring_servers": []` |
+| Live Hello against lab/mock Bridge | **Yes** — Hello slice is implemented | One `live_url` + mTLS files |
+| Production Monitoring Relay | **No** until external Bridge/PKI sign-off | — |
 
 ### 1.2 Preparation checklist
 
@@ -57,11 +57,10 @@ Empty minute/quarter aggregates are normal until the UTC grace window (~2 minute
 
 Keep `monitoring_servers` empty until:
 
-1. This Hello/heartbeat slice is **implemented** and tested (sections below).
-2. Lab Bridge (or updated mock) accepts `agent_hello` then `type: live`.
-3. mTLS materials and `server_name` are staged per [CONFIGURATION.md](../CONFIGURATION.md).
+1. Lab Bridge (or updated mock) accepts `agent_hello` then `type: live` (Agent side is implemented; see contract tests).
+2. mTLS materials and `server_name` are staged per [CONFIGURATION.md](../CONFIGURATION.md).
 
-Adding Production Relay URLs without Hello and joint contract alignment will not deliver a supported Live path.
+Adding Production Relay URLs without joint Bridge/PKI contract alignment will not deliver a supported Live path.
 
 ## 2. Goal
 
@@ -241,8 +240,8 @@ When the code lands:
 ```text
 [done] staging-ready agent + freeze
 [done] mock Bridge/Persistence contract tests (§12)
-[now]  staging host offline install (section 1)
-[this] Live Hello + heartbeat
+[done] Live Hello + heartbeat
+[now]  staging host offline install + lab Bridge Hello exercise (section 1)
   → optional: migrate frames to live_sample
   → Persistence failover (domain-safe)
   → PKI enrollment / rotation (external)

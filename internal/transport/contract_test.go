@@ -20,15 +20,26 @@ import (
 	"github.com/gemvc/infrasible-agent/internal/storage"
 )
 
-// Contract fixtures lock the v0.3.0 *executable* wire documented in
-// docs/design/AGENT_PROTOCOL_AND_SECURITY.md §12. They are mock Bridge /
-// Persistence doubles for this repository — not production services.
+// Contract fixtures lock the executable Live wire after Hello/heartbeat:
+// agent_hello → hello_accepted, then type=live frames and type=heartbeat.
+// See docs/design/AGENT_PROTOCOL_AND_SECURITY.md §12 and AGENT_LIVE_HELLO_HEARTBEAT.md.
+// Mock Bridge / Persistence doubles only — not production services.
 
-// liveEnvelope is the JSON shape the Agent currently writes on Live WSS.
+// liveEnvelope is the JSON shape the Agent writes for Live sample frames.
 type liveEnvelope struct {
 	Type    string          `json:"type"`
 	AgentID string          `json:"agent_id"`
 	Frame   collector.Frame `json:"frame"`
+}
+
+type wireMessage struct {
+	Type              string `json:"type"`
+	AgentID           string `json:"agent_id"`
+	ProtocolMajor     int    `json:"protocol_major"`
+	AuthorizedAgentID string `json:"authorized_agent_id"`
+	AuthorizedChannel string `json:"authorized_channel"`
+	HeartbeatSeconds  int    `json:"heartbeat_seconds"`
+	SentAtUTC         string `json:"sent_at_utc"`
 }
 
 // finalEnvelope is the Persistence POST body shape from storage.Final.
@@ -225,6 +236,46 @@ func TestAgentWirePayloadIs900sFinalOnly(t *testing.T) {
 	}
 }
 
+func TestValidateHelloAcceptedBounds(t *testing.T) {
+	agentID := "agent-1"
+	ok := []byte(`{"type":"hello_accepted","protocol_major":2,"protocol_minor":0,"schema_version":"2.0","authorized_agent_id":"agent-1","authorized_channel":"live","endpoint_id":"monitor-a","heartbeat_seconds":15}`)
+	d, err := validateHelloAccepted(ok, agentID)
+	if err != nil || d != 15*time.Second {
+		t.Fatalf("got %v %v", d, err)
+	}
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"wrong type", `{"type":"live","protocol_major":2,"authorized_agent_id":"agent-1","authorized_channel":"live","heartbeat_seconds":15}`},
+		{"wrong major", `{"type":"hello_accepted","protocol_major":1,"authorized_agent_id":"agent-1","authorized_channel":"live","heartbeat_seconds":15}`},
+		{"wrong agent", `{"type":"hello_accepted","protocol_major":2,"authorized_agent_id":"other","authorized_channel":"live","heartbeat_seconds":15}`},
+		{"wrong channel", `{"type":"hello_accepted","protocol_major":2,"authorized_agent_id":"agent-1","authorized_channel":"persistence","heartbeat_seconds":15}`},
+		{"zero heartbeat", `{"type":"hello_accepted","protocol_major":2,"authorized_agent_id":"agent-1","authorized_channel":"live","heartbeat_seconds":0}`},
+		{"huge heartbeat", `{"type":"hello_accepted","protocol_major":2,"authorized_agent_id":"agent-1","authorized_channel":"live","heartbeat_seconds":301}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := validateHelloAccepted([]byte(tc.body), agentID); err == nil {
+				t.Fatal("expected rejection")
+			}
+		})
+	}
+}
+
+// writeHelloAccepted is a transient mock Bridge helper (RAM only; no history store).
+func writeHelloAccepted(conn *websocket.Conn, ctx context.Context, agentID string, heartbeatSec int) error {
+	payload, err := json.Marshal(helloAccepted{
+		Type: "hello_accepted", ProtocolMajor: 2, ProtocolMinor: 0, SchemaVersion: "2.0",
+		AuthorizedAgentID: agentID, AuthorizedChannel: "live", EndpointID: "monitor-a",
+		HeartbeatSeconds: heartbeatSec, MaxMessageBytes: 262144,
+	})
+	if err != nil {
+		return err
+	}
+	return conn.Write(ctx, websocket.MessageText, payload)
+}
+
 func TestMockBridgeAcceptsLiveEnvelopeAndStoresNoHistory(t *testing.T) {
 	dir := t.TempDir()
 	caPath, certPath, keyPath, serverTLS := writeMTLSMaterial(t, dir)
@@ -236,11 +287,12 @@ func TestMockBridgeAcceptsLiveEnvelopeAndStoresNoHistory(t *testing.T) {
 
 	var (
 		mu       sync.Mutex
-		received []liveEnvelope
-		history  []liveEnvelope // intentionally unused by interface — Bridge must not expose history
+		received []wireMessage
+		history  []wireMessage // intentionally unused — Bridge must not expose history
 	)
 	_ = history
 
+	gotHello := make(chan wireMessage, 1)
 	gotFrame := make(chan liveEnvelope, 1)
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
@@ -248,23 +300,62 @@ func TestMockBridgeAcceptsLiveEnvelopeAndStoresNoHistory(t *testing.T) {
 			return
 		}
 		defer conn.Close(websocket.StatusNormalClosure, "done")
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 		defer cancel()
+
 		_, data, err := conn.Read(ctx)
 		if err != nil {
 			return
 		}
-		var env liveEnvelope
-		if err := json.Unmarshal(data, &env); err != nil {
+		var first wireMessage
+		if err := json.Unmarshal(data, &first); err != nil {
 			return
 		}
 		mu.Lock()
-		received = append(received, env)
-		// Transient relay only: keep the latest message in RAM; never append to a durable history store.
+		received = append(received, first)
 		mu.Unlock()
 		select {
-		case gotFrame <- env:
+		case gotHello <- first:
 		default:
+		}
+		if first.Type != "agent_hello" {
+			return
+		}
+		if err := writeHelloAccepted(conn, ctx, store.AgentID(), 15); err != nil {
+			return
+		}
+		// Keep peer non-silent while waiting for the live frame.
+		go func() {
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					_ = conn.Write(ctx, websocket.MessageText, []byte(`{"type":"heartbeat","sent_at_utc":"2026-10-18T12:00:00Z"}`))
+				}
+			}
+		}()
+		for {
+			_, data, err := conn.Read(ctx)
+			if err != nil {
+				return
+			}
+			var env liveEnvelope
+			if err := json.Unmarshal(data, &env); err != nil {
+				continue
+			}
+			mu.Lock()
+			received = append(received, wireMessage{Type: env.Type, AgentID: env.AgentID})
+			mu.Unlock()
+			if env.Type == "live" {
+				select {
+				case gotFrame <- env:
+				default:
+				}
+				return
+			}
 		}
 	}))
 	srv.TLS = serverTLS
@@ -280,14 +371,25 @@ func TestMockBridgeAcceptsLiveEnvelopeAndStoresNoHistory(t *testing.T) {
 			ID: "bridge", LiveURL: liveURL, ServerName: "localhost",
 			CAFile: caPath, ClientCertFile: certPath, ClientKeyFile: keyPath,
 		}},
-		Store: store,
-		Log:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Store:        store,
+		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		AgentVersion: "0.3.5",
 	}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		sender.Live(ctx, frames)
 	}()
+
+	var hello wireMessage
+	select {
+	case hello = <-gotHello:
+	case <-time.After(5 * time.Second):
+		t.Fatal("mock Bridge did not receive agent_hello first")
+	}
+	if hello.Type != "agent_hello" || hello.ProtocolMajor != 2 || hello.AgentID != store.AgentID() {
+		t.Fatalf("unexpected hello: %+v", hello)
+	}
 
 	frame := collector.Frame{
 		ObservedAtMS: time.Date(2026, 10, 18, 12, 0, 1, 0, time.UTC).UnixMilli(),
@@ -306,7 +408,7 @@ func TestMockBridgeAcceptsLiveEnvelopeAndStoresNoHistory(t *testing.T) {
 	select {
 	case env = <-gotFrame:
 	case <-time.After(5 * time.Second):
-		t.Fatal("mock Bridge did not receive a live frame")
+		t.Fatal("mock Bridge did not receive a live frame after hello")
 	}
 	cancel()
 	select {
@@ -316,10 +418,7 @@ func TestMockBridgeAcceptsLiveEnvelopeAndStoresNoHistory(t *testing.T) {
 	}
 
 	if env.Type != "live" {
-		t.Fatalf("expected type=live (v0.3.0 wire), got %q — target live_sample/hello is not implemented", env.Type)
-	}
-	if env.Type == "agent_hello" {
-		t.Fatal("agent_hello must not be sent on current wire")
+		t.Fatalf("expected type=live after hello, got %q", env.Type)
 	}
 	if env.AgentID != store.AgentID() {
 		t.Fatalf("agent_id mismatch: %q vs %q", env.AgentID, store.AgentID())
@@ -335,8 +434,257 @@ func TestMockBridgeAcceptsLiveEnvelopeAndStoresNoHistory(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(received) != 1 {
-		t.Fatalf("Bridge must be transient; unexpected message count %d", len(received))
+	if len(received) < 2 {
+		t.Fatalf("expected hello then live; got %d messages", len(received))
+	}
+	if received[0].Type != "agent_hello" {
+		t.Fatalf("first message must be agent_hello, got %q", received[0].Type)
+	}
+}
+
+func TestMockBridgeRejectsWrongAuthorizedAgentID(t *testing.T) {
+	dir := t.TempDir()
+	caPath, certPath, keyPath, serverTLS := writeMTLSMaterial(t, dir)
+	store, err := storage.Open(filepath.Join(dir, "agent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	prevTimeout := liveHelloTimeout
+	liveHelloTimeout = 500 * time.Millisecond
+	defer func() { liveHelloTimeout = prevTimeout }()
+
+	hellos := make(chan struct{}, 4)
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "done")
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		_, data, err := conn.Read(ctx)
+		if err != nil {
+			return
+		}
+		var first wireMessage
+		if err := json.Unmarshal(data, &first); err != nil || first.Type != "agent_hello" {
+			return
+		}
+		hellos <- struct{}{}
+		payload, _ := json.Marshal(helloAccepted{
+			Type: "hello_accepted", ProtocolMajor: 2, ProtocolMinor: 0, SchemaVersion: "2.0",
+			AuthorizedAgentID: "not-this-agent", AuthorizedChannel: "live",
+			EndpointID: "monitor-a", HeartbeatSeconds: 15,
+		})
+		_ = conn.Write(ctx, websocket.MessageText, payload)
+		time.Sleep(100 * time.Millisecond)
+	}))
+	srv.TLS = serverTLS
+	srv.StartTLS()
+	defer srv.Close()
+
+	liveURL := "wss://" + strings.TrimPrefix(srv.URL, "https://")
+	frames := make(chan collector.Frame)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sender := &Sender{
+		Servers: []config.Server{{
+			ID: "bridge", LiveURL: liveURL, ServerName: "localhost",
+			CAFile: caPath, ClientCertFile: certPath, ClientKeyFile: keyPath,
+		}},
+		Store: store, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), AgentVersion: "0.3.5",
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		sender.Live(ctx, frames)
+	}()
+
+	select {
+	case <-hellos:
+	case <-time.After(3 * time.Second):
+		t.Fatal("expected first agent_hello")
+	}
+	// Wrong authorized_agent_id must fail negotiate and retry (second hello), never stream live.
+	select {
+	case <-hellos:
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected reconnect after failed hello")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Live worker did not exit")
+	}
+}
+
+func TestMockBridgeNoHelloReplyFailsNegotiate(t *testing.T) {
+	dir := t.TempDir()
+	caPath, certPath, keyPath, serverTLS := writeMTLSMaterial(t, dir)
+	store, err := storage.Open(filepath.Join(dir, "agent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	prevTimeout := liveHelloTimeout
+	liveHelloTimeout = 200 * time.Millisecond
+	defer func() { liveHelloTimeout = prevTimeout }()
+
+	attempts := make(chan struct{}, 4)
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "done")
+		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+		defer cancel()
+		_, data, err := conn.Read(ctx)
+		if err != nil {
+			return
+		}
+		var first wireMessage
+		if json.Unmarshal(data, &first) == nil && first.Type == "agent_hello" {
+			attempts <- struct{}{}
+		}
+		// No hello_accepted — agent must fail negotiate and reconnect.
+		time.Sleep(300 * time.Millisecond)
+	}))
+	srv.TLS = serverTLS
+	srv.StartTLS()
+	defer srv.Close()
+
+	liveURL := "wss://" + strings.TrimPrefix(srv.URL, "https://")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sender := &Sender{
+		Servers: []config.Server{{
+			ID: "bridge", LiveURL: liveURL, ServerName: "localhost",
+			CAFile: caPath, ClientCertFile: certPath, ClientKeyFile: keyPath,
+		}},
+		Store: store, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), AgentVersion: "0.3.5",
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		sender.Live(ctx, make(chan collector.Frame))
+	}()
+
+	select {
+	case <-attempts:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected agent_hello")
+	}
+	select {
+	case <-attempts:
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected reconnect after hello timeout")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Live worker did not exit")
+	}
+}
+
+func TestMockBridgeObservesHeartbeat(t *testing.T) {
+	dir := t.TempDir()
+	caPath, certPath, keyPath, serverTLS := writeMTLSMaterial(t, dir)
+	store, err := storage.Open(filepath.Join(dir, "agent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	gotHeartbeat := make(chan wireMessage, 1)
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "done")
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		_, data, err := conn.Read(ctx)
+		if err != nil {
+			return
+		}
+		var first wireMessage
+		if err := json.Unmarshal(data, &first); err != nil || first.Type != "agent_hello" {
+			return
+		}
+		if err := writeHelloAccepted(conn, ctx, store.AgentID(), 1); err != nil {
+			return
+		}
+		go func() {
+			ticker := time.NewTicker(500 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					_ = conn.Write(ctx, websocket.MessageText, []byte(`{"type":"heartbeat","sent_at_utc":"2026-10-18T12:00:00Z"}`))
+				}
+			}
+		}()
+		for {
+			_, data, err := conn.Read(ctx)
+			if err != nil {
+				return
+			}
+			var msg wireMessage
+			if err := json.Unmarshal(data, &msg); err != nil {
+				continue
+			}
+			if msg.Type == "heartbeat" {
+				select {
+				case gotHeartbeat <- msg:
+				default:
+				}
+				return
+			}
+		}
+	}))
+	srv.TLS = serverTLS
+	srv.StartTLS()
+	defer srv.Close()
+
+	liveURL := "wss://" + strings.TrimPrefix(srv.URL, "https://")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sender := &Sender{
+		Servers: []config.Server{{
+			ID: "bridge", LiveURL: liveURL, ServerName: "localhost",
+			CAFile: caPath, ClientCertFile: certPath, ClientKeyFile: keyPath,
+		}},
+		Store: store, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), AgentVersion: "0.3.5",
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		sender.Live(ctx, make(chan collector.Frame))
+	}()
+
+	var hb wireMessage
+	select {
+	case hb = <-gotHeartbeat:
+	case <-time.After(3 * time.Second):
+		t.Fatal("expected application heartbeat within heartbeat_seconds+ε")
+	}
+	if hb.Type != "heartbeat" || hb.SentAtUTC == "" {
+		t.Fatalf("unexpected heartbeat: %+v", hb)
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Live worker did not exit")
 	}
 }
 
