@@ -1,0 +1,4 @@
+# Build outputs — produced by CI / scripts/package-linux.sh, never commit.
+/dist/
+*.deb
+*.rpm

@@ -71,14 +71,24 @@ EOF
   find "$top/RPMS" -type f -name '*.rpm' -exec cp {} dist/ \;
   rm -rf "$top"
 fi
-# nullglob so missing .deb/.rpm on hosts without dpkg/rpmbuild do not fail checksums.
+# Hash only shippable artifacts. Do NOT glob infrasible-agent-linux-* — that also
+# matches *.sha256 sidecars and breaks `sha256sum -c SHA256SUMS` on CI.
 (
   cd dist
   shopt -s nullglob
-  files=(infrasible-agent-linux-* *.tar.gz *.deb *.rpm)
+  files=(
+    infrasible-agent-linux-amd64
+    infrasible-agent-linux-arm64
+    infrasible-agent-linux-armv7
+    infrasible-agent-linux-armv6
+    *.tar.gz
+    *.deb
+    *.rpm
+  )
   sha256sum "${files[@]}" | awk '!seen[$2]++' > SHA256SUMS
 )
 # Preserve raw-hash sidecars consumed by the existing Infrasible desktop client.
+# Sidecars are outputs only; they are never entries inside SHA256SUMS.
 for target in amd64 arm64 armv7 armv6; do
   sha256sum "dist/infrasible-agent-linux-$target" | awk '{print $1}' > "dist/infrasible-agent-linux-$target.sha256"
 done

@@ -56,7 +56,9 @@ bash scripts/ci-local.sh
 bash scripts/package-linux.sh
 ```
 
-### 9. Stage your changes
+Do **not** commit `dist/` — it is gitignored. CI builds packages on Ubuntu.
+
+### 9. Stage your changes (source only)
 
 ```sh
 git status
@@ -65,9 +67,13 @@ git status
 ### 10. Commit (edit the message)
 
 ```sh
-git add -A
+git add -u
+git add docs .github scripts internal main.go version.go go.mod go.sum 2>/dev/null || true
+git status
 git commit -m "Describe your change."
 ```
+
+Avoid `git add -A` if you have local `dist/` leftovers from an older branch that still tracked it.
 
 ### 11. Push (CI runs on GitHub)
 
