@@ -24,11 +24,11 @@ Local test commands only: [TEST.md](TEST.md). Always run `gofmt -w .` (or `bash 
 
 ```sh
 scripts/ci-cd.sh watch   # optional
-scripts/ci-cd.sh check   # optional local gate (gofmt, tidy, vet, 
+scripts/ci-cd.sh check       # optional local gate (gofmt, tidy, vet, 
 scripts/ci-cd.sh last
 scripts/ci-cd.sh version X.Y.Z   # write VERSION.md + sync version.go, commit, push, watch Agent CI
 scripts/ci-cd.sh release X.Y.Z   # tag vX.Y.Z, watch Agent Release
-gh release view vX.Y.Z
+gh release view vX.Y.Z           #show release result
 ```
 
 Do not reuse an existing `vX.Y.Z` tag. Do not commit `dist/` (gitignored). Local `.deb` without tagging: `bash scripts/package-linux.sh`. Staging install: [INSTALLATION.md](INSTALLATION.md).
