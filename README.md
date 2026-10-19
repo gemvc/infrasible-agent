@@ -37,9 +37,11 @@ Daily: normal `git add` / `commit` / `push`. To ship:
 
 ```sh
 bash scripts/ci-cd.sh last
-bash scripts/ci-cd.sh version X.Y.Z   # bump + commit
-git push                              # wait for green CI
-bash scripts/ci-cd.sh release X.Y.Z   # tag + GitHub Release
+bash scripts/ci-cd.sh version X.Y.Z
+git push
+bash scripts/ci-cd.sh watch           # live CI in terminal
+bash scripts/ci-cd.sh web             # open CI in browser
+bash scripts/ci-cd.sh release X.Y.Z
 ```
 
 See [CI / CD](docs/CI_CD.md).

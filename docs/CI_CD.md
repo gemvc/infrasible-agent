@@ -30,16 +30,18 @@ bash scripts/ci-cd.sh last
 bash scripts/ci-cd.sh version 0.3.2
 ```
 
-Updates `version.go` + `version_test.go`, runs local tests, commits:
+Updates `version.go` + `version_test.go`, runs local tests, commits the prepare message.
 
-`chore(release): prepare Infrasible Agent v0.3.2`
-
-Then **you** push and wait for green CI:
+Then **you** push and watch CI:
 
 ```sh
 git push
-gh run watch
+bash scripts/ci-cd.sh watch
+bash scripts/ci-cd.sh web
 ```
+
+- `watch` → `gh run watch` (live steps in the terminal)
+- `web` → `gh run view --web` (open the run in the browser)
 
 ---
 
@@ -52,6 +54,8 @@ bash scripts/ci-cd.sh release 0.3.2
 Same number as in step 3. Creates tag `v0.3.2`, pushes it; Agent Release publishes packages.
 
 ```sh
+bash scripts/ci-cd.sh watch
+bash scripts/ci-cd.sh web
 gh release view v0.3.2
 ```
 
@@ -63,7 +67,8 @@ gh release view v0.3.2
 bash scripts/ci-cd.sh last
 bash scripts/ci-cd.sh version 0.3.2
 git push
-gh run watch
+bash scripts/ci-cd.sh watch
+bash scripts/ci-cd.sh web
 bash scripts/ci-cd.sh release 0.3.2
 ```
 

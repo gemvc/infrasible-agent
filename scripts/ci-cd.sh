@@ -3,6 +3,8 @@
 #
 #   bash scripts/ci-cd.sh last              # show current + latest released version
 #   bash scripts/ci-cd.sh version X.Y.Z     # bump version.go, commit prepare message
+#   bash scripts/ci-cd.sh watch             # gh run watch (live CI in terminal)
+#   bash scripts/ci-cd.sh web               # gh run view --web (open CI in browser)
 #   bash scripts/ci-cd.sh release X.Y.Z     # tag vX.Y.Z, push tag → GitHub Release
 #   bash scripts/ci-cd.sh check             # optional local gate
 #   bash scripts/ci-cd.sh help
@@ -17,6 +19,10 @@ CMD="${1:-help}"
 die() { echo "error: $*" >&2; exit 1; }
 info() { echo "==> $*"; }
 ok() { echo "OK: $*"; }
+
+need_gh() {
+  command -v gh >/dev/null 2>&1 || die "gh CLI required (brew install gh && gh auth login)"
+}
 
 agent_version() {
   sed -n 's/^const agentVersion = "\([^"]*\)"/\1/p' version.go
@@ -108,7 +114,8 @@ cmd_last() {
   echo "Next for a new release:"
   echo "  bash scripts/ci-cd.sh version X.Y.Z"
   echo "  git push"
-  echo "  # wait for green Agent CI"
+  echo "  bash scripts/ci-cd.sh watch"
+  echo "  bash scripts/ci-cd.sh web"
   echo "  bash scripts/ci-cd.sh release X.Y.Z"
 }
 
@@ -154,8 +161,23 @@ cmd_version() {
   echo
   echo "You push (as usual):"
   echo "  git push"
-  echo "Then wait for green Agent CI, then:"
+  echo "Watch CI:"
+  echo "  bash scripts/ci-cd.sh watch"
+  echo "  bash scripts/ci-cd.sh web"
+  echo "When green:"
   echo "  bash scripts/ci-cd.sh release $ver"
+}
+
+cmd_watch() {
+  need_gh
+  info "gh run watch"
+  gh run watch --exit-status
+}
+
+cmd_web() {
+  need_gh
+  info "gh run view --web"
+  gh run view --web
 }
 
 cmd_release() {
@@ -195,8 +217,10 @@ cmd_release() {
   git tag "v$ver"
   git push origin "v$ver"
   ok "tag v$ver pushed — Agent Release publishes packages"
-  echo "Watch:  gh run watch"
-  echo "View:   gh release view v$ver"
+  echo "Watch release workflow:"
+  echo "  bash scripts/ci-cd.sh watch"
+  echo "  bash scripts/ci-cd.sh web"
+  echo "View release: gh release view v$ver"
 }
 
 cmd_help() {
@@ -209,7 +233,9 @@ Daily (you):
 New release:
   bash scripts/ci-cd.sh last
   bash scripts/ci-cd.sh version X.Y.Z    # bump + commit prepare
-  git push                               # you push; wait for green CI
+  git push
+  bash scripts/ci-cd.sh watch            # live CI in terminal
+  bash scripts/ci-cd.sh web              # open CI in browser
   bash scripts/ci-cd.sh release X.Y.Z    # tag + GitHub Release
 
 Optional:
@@ -221,6 +247,8 @@ EOF
 case "$CMD" in
   last) cmd_last ;;
   version) cmd_version "$@" ;;
+  watch) cmd_watch ;;
+  web) cmd_web ;;
   check) cmd_check ;;
   release) cmd_release "$@" ;;
   help|-h|--help) cmd_help ;;
