@@ -23,11 +23,11 @@ Local test commands only: [TEST.md](TEST.md). Always run `gofmt -w .` (or `bash 
 ## Ship a version
 
 ```sh
-bash scripts/ci-cd.sh watch   # optional
-bash scripts/ci-cd.sh check   # optional local gate (gofmt, tidy, vet, 
-bash scripts/ci-cd.sh last
-bash scripts/ci-cd.sh version X.Y.Z   # write VERSION.md + sync version.go, commit, push, watch Agent CI
-bash scripts/ci-cd.sh release X.Y.Z   # tag vX.Y.Z, watch Agent Release
+scripts/ci-cd.sh watch   # optional
+scripts/ci-cd.sh check   # optional local gate (gofmt, tidy, vet, 
+scripts/ci-cd.sh last
+scripts/ci-cd.sh version X.Y.Z   # write VERSION.md + sync version.go, commit, push, watch Agent CI
+scripts/ci-cd.sh release X.Y.Z   # tag vX.Y.Z, watch Agent Release
 gh release view vX.Y.Z
 ```
 
