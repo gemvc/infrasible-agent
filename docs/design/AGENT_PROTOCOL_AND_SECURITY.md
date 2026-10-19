@@ -1,11 +1,8 @@
 # Infrasible Monitoring Agent — Protocol, Registration and Security
 
-> **Implementation reconciliation (main, PR #11 / v0.2.0):** This document retains the owner-approved target and acceptance criteria; its historical source-audit claims about a CLI-only repository are no longer current. The code now contains an initial Linux daemon, SQLite three-table implementation, outbound mTLS clients and local storage CLI. This does **not** imply P00–P11 acceptance, central interface signoff, release security qualification, full metric quality/freshness coverage, enrollment/rotation, failover authorization or Desktop UI integration. Treat earlier baseline language below as archived **design-time assessment**, not current shipped behavior. The authoritative current command list, build and deployment steps are [README](../../README.md), [Installation](../INSTALLATION.md), [Configuration](../CONFIGURATION.md) and [Operations](../DAEMON_RUNBOOK.md). Keep outstanding design invariants intact.\n\n
+> **Note:** Target/acceptance text below. For current shipped behavior and verdict see [STATUS.md](../STATUS.md), [README](../../README.md), and operator docs under `docs/`. Relay builders: [MONITORING_RELAY.md](MONITORING_RELAY.md).
 
-
-> **Greenfield scope:** New clean-install daemon; no legacy consumers, migrations or compatibility gates. Canonical decision: [Product Requirements](AGENT_PRODUCT_REQUIREMENTS.md), section 2.
-
-**Status:** architecture-owner-approved engineering baseline; **wire examples and central-side guarantees REQUIRE EXTERNAL INTERFACE OWNER SIGN-OFF** before G00 closes. Agent repo implements clients and mocks only; not production Bridge/API/PKI. **Related:** [Requirements](AGENT_PRODUCT_REQUIREMENTS.md), [Architecture](AGENT_ARCHITECTURE.md), [SQLite](AGENT_SQLITE_SCHEMA.md), [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).
+**Status:** target baseline; central Relay/PKI/Persistence still need external sign-off. Agent v0.3.8 implements clients + mocks (Hello Live path lab-proven). **Related:** [MONITORING_RELAY.md](MONITORING_RELAY.md), [STATUS.md](../STATUS.md), [Requirements](AGENT_PRODUCT_REQUIREMENTS.md), [Architecture](AGENT_ARCHITECTURE.md), [SQLite](AGENT_SQLITE_SCHEMA.md), [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).
 
 ## 1. Wire and trust boundaries
 
@@ -289,7 +286,7 @@ A proposed local administrative CLI may later support `config validate`, `config
 
 ## 12. v0.3.0 executable wire vs target protocol — integration handoff
 
-**Read this before implementing any Monitoring Relay or Desktop connection.** Sections 1–11 describe the owner-approved **target** and proposed contracts. They are NOT evidence that the current Agent actually sends those envelopes. The following statements were checked against `internal/transport/transport.go`, `internal/storage/storage.go`, `internal/config/config.go` and `main.go` on `main@953d65646d32506a9c96ef3f6548be8f8c3f8fd5`.
+**Relay builders start here for executable wire; prefer [MONITORING_RELAY.md](MONITORING_RELAY.md) for a standalone how-to.** Sections 1–11 are the owner-approved **target**. This section states what Agent **v0.3.8** actually sends today.
 
 ### Current Live request — implemented Agent output
 
@@ -374,7 +371,7 @@ The section-6 proposed `durable_ack` envelope (including `type`, `period_start_u
 
 ### Current failover and connection limitations
 
-- Live cycles eligible configured endpoints after connection/stream errors with approximately 3-second delay; it **does not implement** authorized `Hello`, priority-based hysteresis/failback or centrally registered ACL negotiation.
+- Live implements authorized Hello + application heartbeats, then cycles eligible endpoints after connection/stream errors (~3s delay). It does **not** implement priority-based hysteresis/failback or a local registrar ACL (ACL is enforced by the Relay/registrar).
 - Persistence selects the first configured Persistence URL and retries there every ~5 seconds; **no persistence failover** currently occurs even when more URLs are configured.
 - No hot config reload, certificate enrollment/renewal/revocation automation, active channel status query or Desktop provisioning API currently exists.
 - A `persistence_domain` string in config and a matching ACK field are **not proof** of shared authoritative durable storage. Do not fail over across domains until that guarantee is established.

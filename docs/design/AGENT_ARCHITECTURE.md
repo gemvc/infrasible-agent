@@ -1,11 +1,8 @@
 # Infrasible Monitoring Agent — Target Architecture
 
-> **Implementation reconciliation (main, PR #11 / v0.2.0):** This document retains the owner-approved target and acceptance criteria; its historical source-audit claims about a CLI-only repository are no longer current. The code now contains an initial Linux daemon, SQLite three-table implementation, outbound mTLS clients and local storage CLI. This does **not** imply P00–P11 acceptance, central interface signoff, release security qualification, full metric quality/freshness coverage, enrollment/rotation, failover authorization or Desktop UI integration. Treat earlier baseline language below as archived **design-time assessment**, not current shipped behavior. The authoritative current command list, build and deployment steps are [README](../../README.md), [Installation](../INSTALLATION.md), [Configuration](../CONFIGURATION.md) and [Operations](../DAEMON_RUNBOOK.md). Keep outstanding design invariants intact.\n\n
+> **Note:** Target/acceptance text below. For current shipped behavior and verdict see [STATUS.md](../STATUS.md), [README](../../README.md), and operator docs under `docs/`. Relay builders: [MONITORING_RELAY.md](MONITORING_RELAY.md).
 
-
-> **Greenfield scope:** New clean-install daemon; no legacy consumers, migrations or compatibility gates. Canonical decision: [Product Requirements](AGENT_PRODUCT_REQUIREMENTS.md), section 2.
-
-**Status:** approved owner architecture choices; detailed architecture baseline for G00 review; v0.2.0 implementation started; production acceptance and external-interface gates pending. **Source:** `main@8b43c8a20d3a00fb030634c46d4677eaf52661ed`, current agent v0.1.0 legacy CLI. **Contracts:** [Product Requirements](AGENT_PRODUCT_REQUIREMENTS.md), [SQLite](AGENT_SQLITE_SCHEMA.md), [Protocol/Security](AGENT_PROTOCOL_AND_SECURITY.md), [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).
+**Status:** approved target architecture. Shipped Agent is v0.3.8 (see [STATUS.md](../STATUS.md)). Production acceptance and external Relay/PKI gates pending. **Contracts:** [Product Requirements](AGENT_PRODUCT_REQUIREMENTS.md), [SQLite](AGENT_SQLITE_SCHEMA.md), [Protocol/Security](AGENT_PROTOCOL_AND_SECURITY.md), [Monitoring Relay](MONITORING_RELAY.md), [Acceptance](AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).
 
 ## 1. System context, trust boundaries and ownership
 

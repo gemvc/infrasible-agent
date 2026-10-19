@@ -1,6 +1,6 @@
-# Infrasible Agent v0.3.1 — Operations
+# Infrasible Agent — Operations
 
-> Test and staging only. This is a local daemon/runbook, **not a certificate of central Bridge/Persistence interoperability**.
+Staging-focused runbook. Local health does not prove central Relay/Persistence. See [STATUS.md](STATUS.md).
 
 ## Runtime
 
@@ -10,9 +10,9 @@ sudo journalctl -u infrasible-agent -n 100 --no-pager
 sudo systemctl restart infrasible-agent
 ```
 
-The systemd unit runs `/usr/bin/infrasible-agent run --config=/etc/infrasible-agent/config.json` under dedicated `infrasible-agent` credentials and stores data in `/var/lib/infrasible-agent/agent.db`. All network channels are outbound. The daemon continues collecting locally when `monitoring_servers` is empty. Network registration and PKI rotation are **not automated** in v0.3.1.
+Unit runs `infrasible-agent run --config=/etc/infrasible-agent/config.json` as user `infrasible-agent`, DB at `/var/lib/infrasible-agent/agent.db`. All channels outbound. Empty `monitoring_servers` = offline collection. PKI rotation is not automated.
 
-## Operator commands (authorized local or existing SSH session)
+## Operator commands
 
 ```sh
 sudo -u infrasible-agent infrasible-agent config validate --config=/etc/infrasible-agent/config.json
@@ -22,23 +22,17 @@ sudo -u infrasible-agent infrasible-agent storage cleanup --dry-run --config=/et
 sudo -u infrasible-agent infrasible-agent storage cleanup --safe --config=/etc/infrasible-agent/config.json
 ```
 
-Status reports database, WAL and SHM bytes, filesystem capacity/free, raw saved and unsaved counts, minute and final counts, oldest Pending, eligible expired ACKed finals, SQLite free pages and late raw samples. `health status` reports SQLite readiness and last known local raw/aggregate/ACK times; **it explicitly cannot prove Live or Persistence connectivity from a separate CLI invocation**. Use centralized monitoring and logs for those channels.
+`health status` / `storage status` reflect local SQLite evidence. They do **not** prove Live socket state (`live_connection` may be `unknown_from_local_cli`). Use Relay metrics/logs for Live.
 
-## Storage lifecycle and cleanup
+## Cleanup rules
 
-- Unsaved raw frames remain protected, even when late or excluded from an already immutable aggregate.
-- Raw rows become `saved=1` only when an eligible minute summary is committed, and can then be cleaned up in bounded batches.
-- 60-second rows are eligible for cleanup only when their enclosing 900-second immutable final has been committed.
-- 900-second final rows are eligible only after a matching durable ACK **and** 60 days counted from UTC period end. Pending final records are protected indefinitely from ordinary cleanup, even under low disk conditions.
-- `--dry-run` estimates a **bounded batch (up to 500 rows per category)**, not total reclaimable disk bytes. `--safe` rechecks predicates in SQLite; deletions do not necessarily shrink DB/WAL immediately. SQLite page vacuum/checkpoint are best-effort, not synchronous guaranteed reclamation.
-
-**Do not grant Desktop a general SQL execution interface, or let arbitrary shell input reach maintenance.** Require human authorization for destructive maintenance, and preserve audit information at the Desktop/operator layer. Running the command over the *existing* SSH connection does not require a separate management port or per-second SSH polling.
+- Unsaved raw and unACKed 900s finals stay protected.
+- `--dry-run` / `--safe` are bounded batches; disk reclaim is best-effort.
+- No general SQL or arbitrary shell from Desktop — authorized SSH only.
 
 ## Troubleshooting
 
-- If database initialization fails, inspect service-user ownership and `journalctl` before retrying. Do **not** remove the SQLite database to mask a schema/integrity error.
-- If history remains Pending, inspect mTLS credentials and registered central API/ACK semantics; an HTTP 200 alone is not durable proof.
-- Always back up SQLite consistently, accounting for WAL and SHM; copying only `agent.db` while the daemon is active can lose committed data.
-- Do not publish an unattended auto-updater or treat the unsigned checksum file as publisher authentication.
-
-See [Installation](INSTALLATION.md), [Configuration](CONFIGURATION.md) and the [acceptance matrix](design/AGENT_ACCEPTANCE_AND_TEST_MATRIX.md).
+- DB init failure: ownership + journalctl; do not delete the DB to “fix” identity.
+- Live credentials rejected: client key must be regular file, mode `0600`, owned by service user.
+- Pending forever: check Persistence ACK contract (HTTP 200 alone is insufficient).
+- Live reconnect loops: Relay must accept Hello then `type: live` and send heartbeats — [MONITORING_RELAY.md](design/MONITORING_RELAY.md).

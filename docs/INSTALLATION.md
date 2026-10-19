@@ -1,45 +1,28 @@
-# Linux installation — Infrasible Agent v0.3.1
+# Linux installation — Infrasible Agent
 
-> **Pre-production testing only.** v0.3.1 is an implementation candidate. It can collect and aggregate locally with no monitoring endpoints; it is not a fully integrated central monitoring deployment.
+> Staging / pre-production. Offline collection works without central endpoints. Production Relay/PKI is not certified by install alone. See [STATUS.md](STATUS.md).
 
-## Download a built artifact
+## Get a package
 
-Download packages from a published [GitHub Release](https://github.com/gemvc/infrasible-agent/releases) (created by `bash scripts/ci-cd.sh release X.Y.Z`). Agent CI on every push only runs fast verify tests; it does **not** upload install packages.
+From a [GitHub Release](https://github.com/gemvc/infrasible-agent/releases) (`bash scripts/ci-cd.sh release X.Y.Z`), or build locally with `bash scripts/package-linux.sh`. Match arch via `uname -m` / `dpkg --print-architecture` (e.g. `infrasible-agent_0.3.8_amd64.deb` or `_arm64.deb`). Verify `SHA256SUMS` when present (integrity only, not publisher auth).
 
-For a one-off staging binary without a Release, build locally: `bash scripts/package-linux.sh` (see [CI_CD.md](CI_CD.md)). Never install the old `v0.1.0` asset expecting daemon-v2 functionality.
-
-Match the Linux OS architecture using `uname -m` and `dpkg --print-architecture`. Use `infrasible-agent_0.3.1_amd64.deb` on Debian/Ubuntu amd64 or `infrasible-agent_0.3.1_arm64.deb` on arm64. On other Linux targets use the matching tarball; generated RPMs only package the binary, not systemd/configuration.
-
-Verify checksums for the downloaded matching package from `SHA256SUMS` when present. SHA-256 alone does **not** authenticate the publisher or protect against a compromised CI account.
-
-## Install on Ubuntu/Debian staging host
-
-After downloading/extracting artifacts to the Linux machine:
+## Install (Debian/Ubuntu)
 
 ```sh
-sudo apt install ./infrasible-agent_0.3.1_amd64.deb
+sudo apt install ./infrasible-agent_0.3.8_amd64.deb   # or arm64
 sudo /usr/bin/infrasible-agent config validate --config=/etc/infrasible-agent/config.json
 sudo systemctl enable --now infrasible-agent
 sudo systemctl status infrasible-agent --no-pager
 ```
 
-The Debian package `postinst` creates the `infrasible-agent` system user, `/var/lib/infrasible-agent` (0750), `/etc/infrasible-agent`, and installs `config.example.json` as `/etc/infrasible-agent/config.json` only when that file is absent. It does **not** enable or start the service; that remains an operator choice. The sample config uses an empty `monitoring_servers` list for **offline staging collection only**. It does not enroll certificates or connect to a production Monitoring relay.
+`postinst` creates user `infrasible-agent`, data/config dirs, and installs example config (empty `monitoring_servers`) if missing. It does **not** start the service. Client private keys for Live must be mode `0600` and owned by the service user.
 
-For tarballs, install the binary to `/usr/bin/infrasible-agent`, its `infrasible-agent.service` to `/etc/systemd/system/infrasible-agent.service`, create the same user and directories manually, and copy `config.example.json` to `/etc/infrasible-agent/config.json` with ownership `root:infrasible-agent` mode `0640`. Generated RPMs remain binary-only (no unit or config).
-
-## Validate data collection and management
+## Validate offline collection
 
 ```sh
 sudo journalctl -u infrasible-agent -n 50 --no-pager
 sudo -u infrasible-agent /usr/bin/infrasible-agent health status --config=/etc/infrasible-agent/config.json
 sudo -u infrasible-agent /usr/bin/infrasible-agent storage status --config=/etc/infrasible-agent/config.json
-sudo -u infrasible-agent /usr/bin/infrasible-agent storage cleanup --dry-run --config=/etc/infrasible-agent/config.json
 ```
 
-The storage and health commands require an **existing** database. Starting the daemon initializes the SQLite database and stable host Agent ID. Operator status does not create a new identity. For initial minute and quarter-hour summaries, allow the documented grace period; do not interpret early empty aggregates as a failed installation.
-
-For correct mTLS setup, [Configuration](CONFIGURATION.md). For safe maintenance and logs, [Operations](DAEMON_RUNBOOK.md). Do not delete or copy a live database file without also accounting for its WAL and SHM.
-
-## Integrating with Monitoring Desktop and Relay
-
-After installing and verifying local collection, follow the [Desktop-to-Agent configuration and enrollment workflow](CONFIGURATION.md#desktop--agent--monitoring-relay-operator-integration-v030) before adding a real Monitoring server. The current Agent cannot self-enroll or automatically issue/rotate certificates. URLs in sample config are placeholders, not deployable endpoints. For central Relay implementers, distinguish the [v0.3.0/v0.3.1 executable wire contract](design/AGENT_PROTOCOL_AND_SECURITY.md#12-v030-executable-wire-vs-target-protocol--integration-handoff) from the future negotiated protocol: they are **not yet interoperable without contract alignment**. Do not claim end-to-end Production readiness merely because local installation works.
+Wait for DB bootstrap; early empty minute/quarter rollups are normal until UTC grace. Config, mTLS, Relay: [CONFIGURATION.md](CONFIGURATION.md), [MONITORING_RELAY.md](design/MONITORING_RELAY.md). Ops: [DAEMON_RUNBOOK.md](DAEMON_RUNBOOK.md).
