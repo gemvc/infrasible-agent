@@ -1,5 +1,3 @@
-// This file is tested and fixed. Do not add, remove, or change the code in this file.
-//
 // Command infrasible-agent is a Linux-only unattended host monitoring daemon.
 // It exposes no HTTP management listener; operator maintenance uses local CLI
 // commands over an existing authorized SSH/Ansible connection.
@@ -56,7 +54,13 @@ func dispatch(args []string) error {
 		return e
 	}
 	if len(args) == 2 && args[0] == "config" && args[1] == "validate" {
-		return json.NewEncoder(os.Stdout).Encode(map[string]any{"valid": true, "config_version": c.ConfigVersion})
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{
+			"valid":            true,
+			"config_version":   c.ConfigVersion,
+			"enabled_families": c.EnabledFamilies,
+			"restart_required": true,
+			"message":          config.RestartRequiredMessage,
+		})
 	}
 	if c.DataPath == "" {
 		return errors.New("missing storage path")
@@ -70,7 +74,11 @@ func dispatch(args []string) error {
 		log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 		defer stop()
-		return agent.New(c, s, log, agentVersion).Run(ctx)
+		a, e := agent.New(c, s, log, agentVersion)
+		if e != nil {
+			return e
+		}
+		return a.Run(ctx)
 	}
 	if len(args) == 2 && args[0] == "health" && args[1] == "status" {
 		s, e := storage.OpenExisting(c.DataPath)

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,6 +35,42 @@ func TestLoadHappyPathAndDefaultDataPath(t *testing.T) {
 	}
 	if c.ConfigVersion != 1 || len(c.MonitoringServers) != 0 {
 		t.Fatalf("unexpected config: %+v", c)
+	}
+	if len(c.EnabledFamilies) != 6 {
+		t.Fatalf("default enabled_families: %v", c.EnabledFamilies)
+	}
+}
+
+func TestLoadEnabledFamiliesSubset(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	body := `{"config_version":1,"enabled_families":["cpu","load"],"monitoring_servers":[]}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.EnabledFamilies) != 2 || c.EnabledFamilies[0] != "cpu" || c.EnabledFamilies[1] != "load" {
+		t.Fatalf("enabled_families: %v", c.EnabledFamilies)
+	}
+}
+
+func TestLoadRejectsEmptyOrUnknownOrDuplicateFamilies(t *testing.T) {
+	dir := t.TempDir()
+	cases := []string{
+		`{"config_version":1,"enabled_families":[],"monitoring_servers":[]}`,
+		`{"config_version":1,"enabled_families":["cpu","gpu"],"monitoring_servers":[]}`,
+		`{"config_version":1,"enabled_families":["cpu","cpu"],"monitoring_servers":[]}`,
+	}
+	for i, body := range cases {
+		path := filepath.Join(dir, fmt.Sprintf("bad-%d.json", i))
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(path); err == nil {
+			t.Fatalf("accepted invalid enabled_families: %s", body)
+		}
 	}
 }
 

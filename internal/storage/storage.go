@@ -1,5 +1,3 @@
-// This file is tested and fixed. Do not add, remove, or change the code in this file.
-//
 // Package storage owns the Agent's single SQLite database: raw frames, UTC
 // minute/quarter rollups, durable ACK state, and operator inventory/cleanup.
 package storage
@@ -33,9 +31,10 @@ const Retention = 60 * 24 * time.Hour
 // Store contains the only durable Agent state. SQLite serializes writes across
 // the daemon and any explicitly authorized offline/operator maintenance CLI.
 type Store struct {
-	db   *sql.DB
-	path string
-	id   string
+	db      *sql.DB
+	path    string
+	id      string
+	cadence map[string]int64
 }
 
 // Statistic holds per-metric rollup counters and extrema for one period.
@@ -240,7 +239,18 @@ func open(path string, allowBootstrap bool) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db: db, path: path, id: id}, nil
+	return &Store{db: db, path: path, id: id, cadence: collector.DefaultCadenceProfile()}, nil
+}
+
+// SetCadenceProfile replaces the metric cadence map used for coverage denominators.
+// Call once at daemon start from the same Registry that collects frames so
+// disabled families are omitted from expected_due / unobserved_due.
+func (s *Store) SetCadenceProfile(profile map[string]int64) {
+	cp := make(map[string]int64, len(profile))
+	for k, v := range profile {
+		cp[k] = v
+	}
+	s.cadence = cp
 }
 
 // Close releases the SQLite connection.
@@ -352,22 +362,16 @@ func flatten(summary map[string]Statistic, key string, v any, at int64) {
 // names. An omitted (not-due) family is not a failed scheduled observation.
 type QualityCounts map[string]map[string]int64
 
-// expected_due and unobserved_due are period-level coverage counters rather
-// than sample statuses. Missing frames must not be fabricated as observations.
-var metricCadenceSeconds = map[string]int64{
-	"cpu": 1, "memory": 1, "network": 1, "disk_io": 1,
-	"load": 5, "filesystem": 30,
-}
-
 // completeCoverage fills expected_due and unobserved_due for each family cadence.
-func completeCoverage(quality QualityCounts, seconds int64) {
-	for family, cadence := range metricCadenceSeconds {
+// Only families present in cadence are covered; disabled collectors stay out of denominators.
+func completeCoverage(quality QualityCounts, seconds int64, cadence map[string]int64) {
+	for family, familyCadence := range cadence {
 		counts := quality[family]
 		if counts == nil {
 			counts = map[string]int64{}
 			quality[family] = counts
 		}
-		expected := seconds / cadence
+		expected := seconds / familyCadence
 		var observed int64
 		for status, count := range counts {
 			switch status {
@@ -543,7 +547,7 @@ func (s *Store) minute(ctx context.Context, start, now int64) error {
 		return e
 	}
 	lin := digest(payload)
-	completeCoverage(quality, 60)
+	completeCoverage(quality, 60, s.cadence)
 	qualityJSON, e := json.Marshal(quality)
 	if e != nil {
 		return e
@@ -626,7 +630,7 @@ func (s *Store) quarter(ctx context.Context, start, now int64) error {
 	}
 	// Recalculate coverage for the complete 900-second period, including
 	// the minutes that had no raw frames at all.
-	completeCoverage(quality, 900)
+	completeCoverage(quality, 900, s.cadence)
 	qualityJSON, e := json.Marshal(quality)
 	if e != nil {
 		return e

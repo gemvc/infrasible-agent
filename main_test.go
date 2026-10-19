@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/gemvc/infrasible-agent/internal/config"
 	"github.com/gemvc/infrasible-agent/internal/storage"
 )
 
@@ -31,8 +35,35 @@ func TestDispatchConfigValidate(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte(`{"config_version":1,"data_path":"`+filepath.ToSlash(filepath.Join(dir, "agent.db"))+`","monitoring_servers":[]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := dispatch([]string{"config", "validate", "--config=" + cfg}); err != nil {
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
 		t.Fatal(err)
+	}
+	os.Stdout = w
+	err = dispatch([]string{"config", "validate", "--config=" + cfg})
+	_ = w.Close()
+	os.Stdout = old
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["valid"] != true || got["restart_required"] != true {
+		t.Fatalf("validate output: %s", bytes.TrimSpace(out))
+	}
+	if got["message"] != config.RestartRequiredMessage {
+		t.Fatalf("message: %v", got["message"])
+	}
+	families, ok := got["enabled_families"].([]any)
+	if !ok || len(families) != 6 {
+		t.Fatalf("enabled_families: %v", got["enabled_families"])
 	}
 }
 

@@ -200,6 +200,48 @@ func TestQualityStatusSurvivesMinuteAndQuarterRollup(t *testing.T) {
 	}
 }
 
+func TestCadenceCoverageHonorsEnabledSubset(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(filepath.Join(t.TempDir(), "subset.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	store.SetCadenceProfile(map[string]int64{"cpu": 1, "load": 5})
+	start := time.Date(2026, 10, 18, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 60; i++ {
+		at := start.Add(time.Duration(i) * time.Second).UnixMilli()
+		metrics := map[string]collector.Observation{
+			"cpu": {Status: "valid", MeasuredAtMS: at, Value: float64(i)},
+		}
+		if i%5 == 0 {
+			metrics["load"] = collector.Observation{Status: "valid", MeasuredAtMS: at, Value: float64(i)}
+		}
+		if err := store.Save(ctx, collector.Frame{ObservedAtMS: at, Metrics: metrics}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Finalize(ctx, start.Add(4*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	var raw string
+	if err := store.db.QueryRowContext(ctx,
+		"SELECT quality_json FROM aggregates WHERE resolution_seconds=60 AND period_start_ms=?",
+		start.UnixMilli()).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var quality QualityCounts
+	if err := json.Unmarshal([]byte(raw), &quality); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := quality["filesystem"]; ok {
+		t.Fatalf("disabled filesystem should not appear in coverage: %#v", quality)
+	}
+	if quality["cpu"]["expected_due"] != 60 || quality["load"]["expected_due"] != 12 {
+		t.Fatalf("subset coverage: %#v", quality)
+	}
+}
+
 func TestCadenceCoverageAndRestartReplay(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "restarted.db")

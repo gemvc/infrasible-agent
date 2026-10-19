@@ -42,7 +42,7 @@ The Agent repository may implement **mock boundary contracts/tests only**, never
 | Component | Responsibility | Forbidden coupling |
 |---|---|---|
 | Main daemon / Supervisor | Startup/shutdown, signals, identity/config readiness, resource health and worker lifetime | Legacy CLI compatibility or per-tick SSH |
-| Linux collector | Small built-in Go metric modules; CPU/Network/Memory/Disk-I/O 1s, Load 5s, Filesystem capacity 30s, metadata on startup/change; genuine timestamps/units/status/quality and bounded entity cardinality | Network delivery, mutating host or unbounded plugin runtime |
+| Linux collector | Small built-in Go `Family` modules composed by `Registry`; CPU/Network/Memory/Disk-I/O 1s, Load 5s, Filesystem capacity 30s (operator `enabled_families`); genuine timestamps/units/status/quality and bounded entity cardinality. Extension: [COLLECTOR_FAMILIES.md](COLLECTOR_FAMILIES.md) | Network delivery, mutating host or unbounded plugin runtime |
 | Monotonic scheduler | One 1000ms **frame** tick with deterministic due plan for metric families; measured actual elapsed, unique frame IDs, skip rather than fabricate overrun ticks | Separate unbounded timer/goroutine for each metric, re-stamping cached old readings |
 | Controlled SQLite writer | Serialize all DB mutations; `WAL` + `synchronous=FULL`; transactions and bounded BUSY retry | Waiting on Bridge or central API while holding DB transaction |
 | Rollup manager | Finalize minute after 120s grace; compute per-metric scheduled/valid/failed coverage and freshness-bounded averages; construct 15m from immutable minute sufficients | Treating every slow metric as if observed 60/900 times or rewriting final historical payload |

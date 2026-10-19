@@ -27,6 +27,31 @@ func (s *stubReader) Read(context.Context, time.Time) collector.Frame {
 	return f
 }
 
+func TestNewFiltersFamiliesAndCadence(t *testing.T) {
+	store, err := storage.Open(filepath.Join(t.TempDir(), "agent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	a, err := New(config.Config{
+		ConfigVersion:   1,
+		EnabledFamilies: []string{"cpu", "load"},
+	}, store, slog.New(slog.NewTextHandler(io.Discard, nil)), "0.0.0-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Config.EnabledFamilies) != 2 {
+		t.Fatalf("enabled: %v", a.Config.EnabledFamilies)
+	}
+	f := a.Collector.Read(context.Background(), time.Unix(1, 0).UTC())
+	if _, ok := f.Metrics["cpu"]; !ok {
+		t.Fatal("cpu missing")
+	}
+	if _, ok := f.Metrics["memory"]; ok {
+		t.Fatal("disabled memory collected")
+	}
+}
+
 func TestEnqueueLatestDropsOldestWhenFull(t *testing.T) {
 	live := make(chan collector.Frame, 2)
 	enqueueLatest(live, collector.Frame{ObservedAtMS: 1})

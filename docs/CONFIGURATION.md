@@ -12,6 +12,28 @@ Daemon reads `/etc/infrasible-agent/config.json` (`config_version: 1`). Unknown 
 }
 ```
 
+Omitting `enabled_families` enables the full default Linux host set: `cpu`, `memory`, `network`, `disk_io`, `load`, `filesystem`.
+
+## Metric families
+
+```json
+{
+  "config_version": 1,
+  "data_path": "/var/lib/infrasible-agent/agent.db",
+  "enabled_families": ["cpu", "memory", "network", "disk_io", "load", "filesystem"],
+  "monitoring_servers": []
+}
+```
+
+| Field | Notes |
+|---|---|
+| `enabled_families` | Optional. Omitted/`null` → all default Linux families. Must be non-empty when set; names must be unique and in the collector catalog. Unknown names fail validation. |
+| Cadence (built-in) | `cpu`/`memory`/`network`/`disk_io` = 1s; `load` = 5s; `filesystem` = 30s |
+
+Future families (for example `gpu`, `docker`) are added as compile-time Go modules and catalog names; operators enable them here after they ship. See [design/COLLECTOR_FAMILIES.md](design/COLLECTOR_FAMILIES.md).
+
+**Restart required:** changing `enabled_families` (or any other config field) does not apply until the daemon restarts. `config validate` always reports `restart_required: true`.
+
 ## Live / Persistence server entry
 
 ```json
@@ -41,6 +63,8 @@ Live and Persistence are separate. Persistence currently uses the first configur
 sudo -u infrasible-agent infrasible-agent config validate --config=/etc/infrasible-agent/config.json
 sudo systemctl restart infrasible-agent
 ```
+
+Successful validate JSON includes `enabled_families`, `restart_required: true`, and a message reminding operators to restart.
 
 ## Desktop → Agent → Relay (operator flow)
 

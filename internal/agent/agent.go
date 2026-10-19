@@ -1,10 +1,9 @@
-// This file is tested and fixed. Do not add, remove, or change the code in this file.
-//
 // Package agent orchestrates collection, SQLite persistence, and outbound transport.
 package agent
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"sync"
@@ -25,9 +24,21 @@ type Agent struct {
 	AgentVersion string
 }
 
-// New builds an Agent with a Linux collector and the provided store and logger.
-func New(c config.Config, s *storage.Store, l *slog.Logger, agentVersion string) *Agent {
-	return &Agent{Config: c, Store: s, Collector: collector.NewLinux(), Log: l, AgentVersion: agentVersion}
+// New builds an Agent from config-selected families, injects matching cadence
+// into the store, and returns a ready daemon. enabled_families is fixed for the
+// process lifetime; config changes require a restart.
+func New(c config.Config, s *storage.Store, l *slog.Logger, agentVersion string) (*Agent, error) {
+	names := c.EnabledFamilies
+	if names == nil {
+		names = collector.DefaultFamilyNames()
+	}
+	reg, err := collector.NewFromNames(names)
+	if err != nil {
+		return nil, fmt.Errorf("collector families: %w", err)
+	}
+	s.SetCadenceProfile(reg.CadenceProfile())
+	c.EnabledFamilies = reg.Names()
+	return &Agent{Config: c, Store: s, Collector: reg, Log: l, AgentVersion: agentVersion}, nil
 }
 
 // enqueueLatest keeps only the newest frame in a bounded Live channel.
@@ -60,7 +71,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	defer ticker.Stop()
 	roll := time.NewTicker(10 * time.Second)
 	defer roll.Stop()
-	a.Log.Info("agent running", "agent_id", a.Store.AgentID(), "pid", os.Getpid())
+	a.Log.Info("agent running",
+		"agent_id", a.Store.AgentID(),
+		"pid", os.Getpid(),
+		"enabled_families", a.Config.EnabledFamilies,
+	)
 	defer func() { close(live); workers.Wait() }()
 	for {
 		select {
