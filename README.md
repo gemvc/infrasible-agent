@@ -14,7 +14,8 @@ Staging-ready for offline collection and lab Live Hello. **Not** production-cert
 | [VERSION.md](VERSION.md) | **Semver SSOT** — one line only |
 | [Documentation map](docs/DOCUMENTATION.md) | Where each fact lives |
 | [Status / verdict](docs/STATUS.md) | What works, what is blocked, next work |
-| [Monitoring Relay guide](docs/design/MONITORING_RELAY.md) | How to build the Relay |
+| [Monitoring Relay guide](docs/design/MONITORING_RELAY.md) | Agent Live wire contract for Relay |
+| [Relay implementer brief](relay/PROMPT.md) | Full junior build guide (phases under `relay/`) |
 | [CI / CD](docs/CI_CD.md) | Verify, version bump, tag-only release |
 | [Tests](docs/TEST.md) | Local and CI-equivalent tests |
 | [Installation](docs/INSTALLATION.md) | Install package, offline staging |

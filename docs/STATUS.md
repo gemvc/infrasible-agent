@@ -26,7 +26,7 @@ This file is the **only** documentation source of truth for what is staging-read
 | Need the doc map / SSOT rules | [DOCUMENTATION.md](DOCUMENTATION.md) |
 | Operate / install the Agent | [INSTALLATION.md](INSTALLATION.md), [CONFIGURATION.md](CONFIGURATION.md), [DAEMON_RUNBOOK.md](DAEMON_RUNBOOK.md), [CI_CD.md](CI_CD.md), [TEST.md](TEST.md) |
 | Add a metric family (Docker, GPU, …) | [design/COLLECTOR_FAMILIES.md](design/COLLECTOR_FAMILIES.md), [design/example_module.md](design/example_module.md) |
-| Build the Monitoring Relay | [design/MONITORING_RELAY.md](design/MONITORING_RELAY.md) |
+| Build the Monitoring Relay | [design/MONITORING_RELAY.md](design/MONITORING_RELAY.md) (wire) + [`relay/PROMPT.md`](../relay/PROMPT.md) (full implementer brief) |
 | Need wire / security detail | [design/AGENT_PROTOCOL_AND_SECURITY.md](design/AGENT_PROTOCOL_AND_SECURITY.md) §12 (executable) vs §4–6 (target) |
 | Need product/architecture targets | [design/AGENT_PRODUCT_REQUIREMENTS.md](design/AGENT_PRODUCT_REQUIREMENTS.md), [design/AGENT_ARCHITECTURE.md](design/AGENT_ARCHITECTURE.md) |
 

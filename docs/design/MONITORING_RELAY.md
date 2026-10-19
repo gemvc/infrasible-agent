@@ -1,7 +1,8 @@
 # Monitoring Relay — developer guide
 
 **Audience:** engineers building the central **Monitoring Relay** (Live Bridge) that hosts many Infrasible Agents.  
-**You do not need this Agent repository** to implement the Relay. This document is the contract.
+**You do not need this Agent repository** to implement the Relay. This document is the **wire contract**.  
+**Full junior implementer brief** (modules, CI/CD, packaging, build order): [`relay/PROMPT.md`](../../relay/PROMPT.md).
 
 **Companion (Persistence is separate):** Agents also POST 15‑minute finals to a **Persistence API**. That is not the Relay. Do not store monitoring history in the Relay.
 

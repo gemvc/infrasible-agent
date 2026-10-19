@@ -15,6 +15,7 @@ Do **not** copy current version numbers or ship verdicts into multiple docs. A r
 | **Tests** | [`TEST.md`](TEST.md) | — |
 | **Add a metric Family** | [`design/COLLECTOR_FAMILIES.md`](design/COLLECTOR_FAMILIES.md) + [`design/example_module.md`](design/example_module.md) | — |
 | **Executable Live wire for Relay builders** | [`design/MONITORING_RELAY.md`](design/MONITORING_RELAY.md) | Protocol shape, not a version stamp |
+| **Relay implementer brief** (junior build guide) | [`relay/`](../relay/) — start [`relay/PROMPT.md`](../relay/PROMPT.md) | Docs only; Relay code is a sibling repo |
 | **Target design** (may exceed shipped code) | `docs/design/AGENT_*.md` | Always defer “what ships today” to `STATUS.md` |
 
 `version.go` holds a **synced copy** for the Go binary. It is not independently edited. Tests fail if it drifts from `VERSION.md`.
