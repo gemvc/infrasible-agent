@@ -66,9 +66,23 @@ func TestRunExitsOnCancelAndPersistsSamples(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- a.Run(ctx) }()
-	deadline := time.Now().Add(3 * time.Second)
-	for stub.n.Load() < 1 && time.Now().Before(deadline) {
+	// Wait until Save finished — canceling as soon as Read runs races the
+	// writeCtx derived from the parent context and can drop the sample.
+	deadline := time.Now().Add(5 * time.Second)
+	var st storage.StorageStatus
+	for time.Now().Before(deadline) {
+		st, err = store.Status(context.Background(), time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.RawUnsaved+st.RawSaved >= 1 {
+			break
+		}
 		time.Sleep(50 * time.Millisecond)
+	}
+	if st.RawUnsaved+st.RawSaved < 1 {
+		cancel()
+		t.Fatalf("expected persisted raw samples before cancel: %+v collector_calls=%d", st, stub.n.Load())
 	}
 	cancel()
 	select {
@@ -78,16 +92,6 @@ func TestRunExitsOnCancelAndPersistsSamples(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not exit after cancel")
-	}
-	if stub.n.Load() < 1 {
-		t.Fatal("collector was never invoked")
-	}
-	st, err := store.Status(context.Background(), time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if st.RawUnsaved+st.RawSaved < 1 {
-		t.Fatalf("expected persisted raw samples: %+v", st)
 	}
 }
 
