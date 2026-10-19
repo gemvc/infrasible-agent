@@ -2,6 +2,8 @@
 
 **Audience:** engineers adding host metric families (GPU, Docker, …) to the Agent.
 
+**Worked example with code:** [example_module.md](example_module.md)
+
 The Agent uses **compile-time Go modules** behind a `Family` contract and a `Registry`. There is **no** dynamic plugin runtime (no `.so`, scripts, or inbound loaders). This matches product AD-03 / FR-18.
 
 ## Contracts
