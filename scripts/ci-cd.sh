@@ -2,10 +2,10 @@
 # Release helper. Daily work stays normal git add / commit / push.
 #
 #   bash scripts/ci-cd.sh last              # show current + latest released version
-#   bash scripts/ci-cd.sh version X.Y.Z     # bump version.go, commit prepare message
-#   bash scripts/ci-cd.sh watch             # gh run watch (live CI in terminal)
-#   bash scripts/ci-cd.sh web               # gh run view --web (open CI in browser)
-#   bash scripts/ci-cd.sh release X.Y.Z     # tag vX.Y.Z, push tag → GitHub Release
+#   bash scripts/ci-cd.sh version X.Y.Z     # bump, commit, push, watch Agent CI
+#   bash scripts/ci-cd.sh release X.Y.Z     # tag, push, watch Agent Release
+#   bash scripts/ci-cd.sh watch             # gh run watch (any run)
+#   bash scripts/ci-cd.sh web               # gh run view --web
 #   bash scripts/ci-cd.sh check             # optional local gate
 #   bash scripts/ci-cd.sh help
 #
@@ -113,9 +113,6 @@ cmd_last() {
   echo
   echo "Next for a new release:"
   echo "  bash scripts/ci-cd.sh version X.Y.Z"
-  echo "  git push"
-  echo "  bash scripts/ci-cd.sh watch"
-  echo "  bash scripts/ci-cd.sh web"
   echo "  bash scripts/ci-cd.sh release X.Y.Z"
 }
 
@@ -146,8 +143,8 @@ cmd_version() {
     die "origin already has tag v$ver — pick a new version"
   fi
 
-  echo "Bump agentVersion: $current → $ver"
-  if ! confirm "Update version.go / version_test.go and commit?"; then
+  echo "Bump agentVersion: $current → $ver (commit + push to origin/main)"
+  if ! confirm "Update version.go / version_test.go, commit, and git push?"; then
     die "cancelled"
   fi
 
@@ -158,13 +155,18 @@ cmd_version() {
   git add version.go version_test.go
   git commit -m "chore(release): prepare Infrasible Agent v$ver"
   ok "committed version bump to $ver"
+
+  info "git push origin main"
+  git push origin HEAD
+  ok "pushed — watching Agent CI"
   echo
-  echo "You push (as usual):"
-  echo "  git push"
-  echo "Watch CI:"
-  echo "  bash scripts/ci-cd.sh watch"
-  echo "  bash scripts/ci-cd.sh web"
-  echo "When green:"
+  need_gh
+  # Brief pause so the new workflow run is visible to gh.
+  sleep 2
+  gh run watch --exit-status
+  ok "Agent CI green for v$ver prepare"
+  echo
+  echo "When ready to publish:"
   echo "  bash scripts/ci-cd.sh release $ver"
 }
 
@@ -216,11 +218,15 @@ cmd_release() {
 
   git tag "v$ver"
   git push origin "v$ver"
-  ok "tag v$ver pushed — Agent Release publishes packages"
-  echo "Agent Release is packaging + publishing. Follow it with:"
-  echo "  bash scripts/ci-cd.sh watch"
-  echo "  bash scripts/ci-cd.sh web"
-  echo "When done: gh release view v$ver"
+  ok "tag v$ver pushed — watching Agent Release"
+  echo
+  need_gh
+  sleep 2
+  gh run watch --exit-status
+  ok "Agent Release finished for v$ver"
+  echo
+  echo "View: gh release view v$ver"
+  echo "Or:   bash scripts/ci-cd.sh web"
 }
 
 cmd_help() {
@@ -232,13 +238,13 @@ Daily (you):
 
 New release:
   bash scripts/ci-cd.sh last
-  bash scripts/ci-cd.sh version X.Y.Z    # bump + commit prepare
-  git push
-  bash scripts/ci-cd.sh watch            # live CI in terminal
-  bash scripts/ci-cd.sh web              # open CI in browser
-  bash scripts/ci-cd.sh release X.Y.Z    # tag + GitHub Release
+  bash scripts/ci-cd.sh version X.Y.Z    # bump + commit + push + watch CI
+  bash scripts/ci-cd.sh release X.Y.Z    # tag + push + watch Agent Release
 
 Optional:
+  bash scripts/ci-cd.sh watch
+  bash scripts/ci-cd.sh web
+
   bash scripts/ci-cd.sh check
   bash scripts/ci-cd.sh help
 EOF

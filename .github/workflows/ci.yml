@@ -16,7 +16,8 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          cache: true
+          # Avoid noisy "Failed to restore … tar" annotations from a bad Go module cache.
+          cache: false
       - name: gofmt
         run: |
           set -euo pipefail

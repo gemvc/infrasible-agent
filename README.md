@@ -37,10 +37,8 @@ Daily: `git add` / `commit` / `push` (Agent CI = fast verify only). To ship:
 
 ```sh
 bash scripts/ci-cd.sh last
-bash scripts/ci-cd.sh version X.Y.Z
-git push && bash scripts/ci-cd.sh watch
-bash scripts/ci-cd.sh release X.Y.Z   # tag → Agent Release packages + publishes
-bash scripts/ci-cd.sh watch
+bash scripts/ci-cd.sh version X.Y.Z   # bump + commit + push + watch CI
+bash scripts/ci-cd.sh release X.Y.Z   # tag + push + watch Agent Release
 ```
 
 See [CI / CD](docs/CI_CD.md).

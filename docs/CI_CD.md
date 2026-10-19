@@ -1,10 +1,22 @@
 # CI / CD — Infrasible Agent
 
+---
+
+## Full ship sequence
+
+```sh
+bash scripts/ci-cd.sh last
+bash scripts/ci-cd.sh version 0.3.2
+bash scripts/ci-cd.sh release 0.3.2
+```
+
+---
+
 Local script and GitHub Actions share one model:
 
 | Where | When | What |
 |---|---|---|
-| You + `scripts/ci-cd.sh` | daily / ship | check, version bump, tag |
+| You + `scripts/ci-cd.sh` | daily / ship | check, version, release |
 | **Agent CI** | every push / PR | fast verify only (`gofmt`, tidy, vet, race tests) |
 | **Agent Release** | tag `vX.Y.Z` only | package Linux artifacts + GitHub Release |
 
@@ -38,27 +50,27 @@ bash scripts/ci-cd.sh last
 
 ---
 
-## 3. Bump version
+## 3. Bump version (commit + push + watch CI)
 
 ```sh
 bash scripts/ci-cd.sh version 0.3.2
-git push
-bash scripts/ci-cd.sh watch
-bash scripts/ci-cd.sh web
 ```
+
+Updates `version.go` + `version_test.go`, runs local tests, commits, **`git push`**, then **`gh run watch`** until Agent CI is green.
 
 ---
 
-## 4. Publish Release
+## 4. Publish Release (tag + push + watch)
 
 ```sh
 bash scripts/ci-cd.sh release 0.3.2
-bash scripts/ci-cd.sh watch
-bash scripts/ci-cd.sh web
-gh release view v0.3.2
 ```
 
-`release` pushes tag `v0.3.2` → **Agent Release** builds packages and publishes.
+Pushes tag `v0.3.2`, then **`gh run watch`** until Agent Release finishes (package + publish).
+
+```sh
+gh release view v0.3.2
+```
 
 ---
 
@@ -67,10 +79,7 @@ gh release view v0.3.2
 ```sh
 bash scripts/ci-cd.sh last
 bash scripts/ci-cd.sh version 0.3.2
-git push
-bash scripts/ci-cd.sh watch
 bash scripts/ci-cd.sh release 0.3.2
-bash scripts/ci-cd.sh watch
 ```
 
 ---
@@ -81,3 +90,4 @@ bash scripts/ci-cd.sh watch
 - Need a `.deb` without tagging? `bash scripts/package-linux.sh` locally.
 - Staging install: [INSTALLATION.md](INSTALLATION.md).
 - Do not reuse an existing `vX.Y.Z` tag.
+- Go module cache is off in Actions (`cache: false`) so runs stay quiet; a failed cache restore is not a build error.
