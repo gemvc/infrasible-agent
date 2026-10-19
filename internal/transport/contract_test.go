@@ -123,9 +123,9 @@ func TestMockPersistenceLostACKThenIdenticalReplay(t *testing.T) {
 	defer store.Close()
 
 	var (
-		mu       sync.Mutex
-		attempts int
-		bodies   [][]byte
+		mu        sync.Mutex
+		attempts  int
+		bodies    [][]byte
 		committed map[string]string // record_id -> hash (central dedup)
 	)
 	committed = map[string]string{}

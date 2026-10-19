@@ -4,6 +4,7 @@
 
 ## Source of truth
 
+- [CI / CD](docs/CI_CD.md) — local verify, GitHub CI gate, tag-only releases (push to main does not deploy).
 - [Installation](docs/INSTALLATION.md) — obtain verified CI artifacts, install systemd service and initialize the host.
 - [Configuration & Desktop connection workflow](docs/CONFIGURATION.md) — exact v0.3.1 JSON, existing-SSH setup sequence, Relay registration dependencies and operator controls.
 - [Actual v0.3.0/v0.3.1 wire vs proposed Relay protocol](docs/design/AGENT_PROTOCOL_AND_SECURITY.md#12-v030-executable-wire-vs-target-protocol--integration-handoff) — implementer handoff and integration blockers.
@@ -33,12 +34,10 @@ The central Live Bridge and Persistence API protocol and durable ACK must be joi
 Requires Go 1.23 or newer. For a normal host install, **prefer CI or released artifacts**, not local compilation.
 
 ```sh
-go mod download
-go vet ./...
-go test -race -count=1 ./...
-bash scripts/package-linux.sh
+bash scripts/ci-local.sh          # gofmt + tidy + vet + race tests (run before push)
+bash scripts/package-linux.sh     # optional local cross-build
 ```
 
-CI: [Agent CI](https://github.com/gemvc/infrasible-agent/actions/workflows/ci.yml). Release publication is a **separate manual action** from successful CI: see [Release workflow](https://github.com/gemvc/infrasible-agent/actions/workflows/release.yml). A previous tag does not describe the current daemon.
+CI verifies every push/PR but **does not publish releases**. Ship only via tag `vX.Y.Z` or the manual [Agent Release](https://github.com/gemvc/infrasible-agent/actions/workflows/release.yml) workflow — see [CI / CD](docs/CI_CD.md).
 
 **License:** MIT. No licensing change is implied by this release.

@@ -1,3 +1,5 @@
+# Continuous Integration — verify only. Does NOT publish releases or deploy.
+# Ship artifacts with Agent Release (tag / workflow_dispatch). See docs/CI_CD.md.
 name: Agent CI
 on:
   push:
@@ -14,9 +16,16 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          cache: false
+          cache: true
       - name: Verify Go formatting
-        run: test -z "$(gofmt -l main.go main_test.go version.go version_test.go internal)"
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [[ -n "$unformatted" ]]; then
+            echo "::error::Go files need gofmt -w . — unformatted:"
+            echo "$unformatted"
+            exit 1
+          fi
       - name: Resolve pinned module dependencies
         run: |
           go mod tidy
@@ -25,6 +34,16 @@ jobs:
         run: |
           go vet ./...
           go test -race -count=1 ./...
+
+  package:
+    needs: verify
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: Build all architectures and packages
         run: |
           sudo apt-get update -qq
@@ -52,3 +71,4 @@ jobs:
           name: linux-packages
           path: dist/
           if-no-files-found: error
+          retention-days: 14
