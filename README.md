@@ -34,10 +34,12 @@ The central Live Bridge and Persistence API protocol and durable ACK must be joi
 Requires Go 1.23 or newer. For a normal host install, **prefer CI or released artifacts**, not local compilation.
 
 ```sh
-bash scripts/ci-local.sh          # gofmt + tidy + vet + race tests (run before push)
-bash scripts/package-linux.sh     # optional local cross-build
+bash scripts/ci-cd.sh check     # local gate (always before commit/push)
+bash scripts/ci-cd.sh push      # confirm + git push
+bash scripts/ci-cd.sh watch     # follow Agent CI
+bash scripts/ci-cd.sh release X.Y.Z   # tag + publish (when shipping)
 ```
 
-CI verifies every push/PR but **does not publish releases**. Ship only via tag `vX.Y.Z` or the manual [Agent Release](https://github.com/gemvc/infrasible-agent/actions/workflows/release.yml) workflow — see [CI / CD](docs/CI_CD.md).
+CI verifies every push/PR but **does not publish releases**. See [CI / CD](docs/CI_CD.md).
 
 **License:** MIT. No licensing change is implied by this release.
