@@ -36,7 +36,9 @@ for target in amd64 arm64 armv7 armv6; do
     mkdir -p "$pkg/DEBIAN" "$pkg/usr/share/doc/infrasible-agent"
     cp LICENSE "$pkg/usr/share/doc/infrasible-agent/copyright"
     install -Dm644 packaging/infrasible-agent.service "$pkg/usr/lib/systemd/system/infrasible-agent.service"
-    install -Dm644 packaging/config.example.json "$pkg/usr/share/doc/infrasible-agent/config.example.json"
+    # Keep example config outside /usr/share/doc: Ubuntu/Debian dpkg path-exclude
+    # drops most doc files (except copyright), which breaks postinst.
+    install -Dm644 packaging/config.example.json "$pkg/usr/share/infrasible-agent/config.example.json"
     install -Dm755 packaging/debian/postinst "$pkg/DEBIAN/postinst"
     install -Dm755 packaging/debian/prerm "$pkg/DEBIAN/prerm"
     install -Dm755 packaging/debian/postrm "$pkg/DEBIAN/postrm"
