@@ -1,98 +1,234 @@
 # CI / CD — Infrasible Agent
 
-**Policy:** every push and pull request is **verified** by CI. **Releases are never published** from an ordinary push to `main`. Shipping is an explicit tag / manual release action only.
+**Policy:** push to `main` only **verifies**. A **GitHub Release** is created only when you ship a version tag (or run Agent Release manually). Ordinary commits never deploy.
 
-| Stage | When | Workflow | Publishes? |
-|---|---|---|---|
-| Local verify | Before you push | [`scripts/ci-local.sh`](../scripts/ci-local.sh) | No |
-| Continuous Integration | `push`/`pull_request` on `main`, or manual | [Agent CI](../.github/workflows/ci.yml) | No (CI artifacts only) |
-| Continuous Delivery | Tag `vX.Y.Z` **or** Actions → Agent Release | [Agent Release](../.github/workflows/release.yml) | Yes — GitHub Release + packages |
+Replace `0.3.2` with your next semver everywhere below. Run every command from the **repository root**, one after another.
 
-Staging host install from CI artifacts or a Release is documented in [INSTALLATION.md](INSTALLATION.md). That is operator deploy, not this pipeline’s job.
+---
 
-## 1. Local gate (do this first)
+## Path A — Daily work (verify + push; no release)
+
+### 1. Format
 
 ```sh
-bash scripts/ci-local.sh
-# optional cross-build (Linux tools / dpkg may be partial on macOS):
-bash scripts/package-linux.sh
+gofmt -w .
 ```
 
-Equivalent manual steps:
+### 2. Confirm nothing left unformatted
 
 ```sh
-gofmt -w .          # fix formatting; CI fails if any file is dirty
 test -z "$(gofmt -l .)"
-go mod tidy && git diff --exit-code -- go.mod go.sum
+```
+
+### 3. Sync modules
+
+```sh
+go mod tidy
+```
+
+### 4. Fail if `go.mod` / `go.sum` still dirty
+
+```sh
+git diff --exit-code -- go.mod go.sum
+```
+
+### 5. Vet
+
+```sh
 go vet ./...
+```
+
+### 6. Race tests
+
+```sh
 go test -race -count=1 ./...
 ```
 
-A common CI failure is **gofmt** while `go test` still passes locally. Always format before push.
-
-## 2. Continuous Integration (Agent CI)
-
-Triggers: push to `main`, pull requests, `workflow_dispatch`.
-
-Jobs:
-
-1. **`verify`** — `gofmt -l .` (prints offenders on failure), `go mod tidy` drift check, `go vet`, `go test -race`.
-2. **`package`** (after verify) — `scripts/package-linux.sh`, checksum check, deb/rpm metadata, short daemon CLI smoke, upload `linux-packages` artifact (14-day retention).
-
-CI artifacts are for **staging/testing**. They are not a signed production Release. Green CI alone does not authorize production Monitoring deploy.
-
-## 3. Continuous Delivery (Agent Release)
-
-Does **not** run on normal commits. Two equivalent ways to ship:
-
-### A. Manual (recommended for controlled releases)
-
-1. Ensure `main` is green on Agent CI.
-2. Commit the intended `agentVersion` in [`version.go`](../version.go) on `main` (e.g. `0.3.2`).
-3. GitHub → Actions → **Agent Release** → Run workflow on `main` → input version `0.3.2` (must match `version.go`).
-4. Workflow tests, packages, creates tag `v0.3.2` if missing, publishes GitHub Release assets.
-
-### B. Tag push
+### 7. (Optional) one-shot instead of steps 1–6
 
 ```sh
-# main HEAD must already have version.go == 0.3.2 and be pushed
+bash scripts/ci-local.sh
+```
+
+### 8. (Optional) local Linux packages
+
+```sh
+bash scripts/package-linux.sh
+```
+
+### 9. Stage your changes
+
+```sh
+git status
+```
+
+### 10. Commit (edit the message)
+
+```sh
+git add -A
+git commit -m "Describe your change."
+```
+
+### 11. Push (CI runs on GitHub)
+
+```sh
+git push origin HEAD
+```
+
+### 12. Watch CI (optional)
+
+```sh
+gh run watch
+```
+
+Or open: https://github.com/gemvc/infrasible-agent/actions/workflows/ci.yml  
+
+Green CI = verified + `linux-packages` artifact. **Not** a Release.
+
+---
+
+## Path B — Ship a Release (tag = deploy artifacts to GitHub Releases)
+
+Do Path A on `main` first until Agent CI is green. Then:
+
+### 1. On latest main
+
+```sh
+git checkout main
+git pull origin main
+```
+
+### 2. Set the version in source (edit the number)
+
+```sh
+# Example: set agentVersion to 0.3.2 inside version.go, then:
+grep 'agentVersion' version.go
+```
+
+Confirm it prints `"0.3.2"` (or your target).
+
+### 3. Local verify again after the version bump
+
+```sh
+bash scripts/ci-local.sh
+```
+
+### 4. Commit the version bump
+
+```sh
+git add version.go version_test.go
+git commit -m "chore(release): prepare Infrasible Agent v0.3.2"
+```
+
+### 5. Push main (CI must pass)
+
+```sh
+git push origin main
+```
+
+### 6. Wait until CI is green
+
+```sh
+gh run list --workflow=ci.yml --branch main --limit 1
+gh run watch
+```
+
+### 7a. Publish by tag (copy-paste release)
+
+```sh
 git tag v0.3.2
 git push origin v0.3.2
 ```
 
-The release workflow runs on tag `vX.Y.Z`, checks the tag matches `version.go`, rebuilds packages, and publishes. It **refuses** to overwrite an existing GitHub Release of the same name.
+Agent Release starts from the tag push, rebuilds packages, and creates the GitHub Release.
 
-### What is not automated
+### 7b. Or publish from the Actions UI
 
-- Production host install / `systemctl` on customer machines  
-- Signing / provenance beyond SHA-256 in the artifact set  
-- Auto-bump of `version.go`  
-- Deploy on every merge to `main`
-
-## 4. Recommended developer loop
-
-```text
-edit → bash scripts/ci-local.sh → commit → push / PR
-         ↓
-    Agent CI (verify + package artifacts)
-         ↓
-    (optional) install CI artifact on staging host — INSTALLATION.md
-         ↓
-    when ready to ship: bump version.go → merge main → Agent Release or git tag vX.Y.Z
+```sh
+gh workflow run "Agent Release" --ref main -f version=0.3.2
+gh run watch
 ```
 
-## 5. Troubleshooting
+(`version` must match `version.go` exactly.)
 
-| Symptom | Fix |
-|---|---|
-| CI “Verify Go formatting” failed | `gofmt -w .` and commit |
-| `go mod tidy` diff in CI | run `go mod tidy` locally; commit `go.mod`/`go.sum` |
-| Release “version must match version.go” | bump `version.go` on main first, or pass the matching input |
-| Release “already exists” | do not republish; bump version for a new release |
-| Tests pass locally, fail in CI | reproduce with `bash scripts/ci-local.sh`; check race/Linux-only paths |
+### 8. Confirm the Release exists
 
-## 6. Related docs
+```sh
+gh release view v0.3.2
+```
 
-- [INSTALLATION.md](INSTALLATION.md) — obtain artifacts and install on a staging host  
-- [DAEMON_RUNBOOK.md](DAEMON_RUNBOOK.md) — operate the daemon after install  
-- [AGENT_LIVE_HELLO_HEARTBEAT.md](design/AGENT_LIVE_HELLO_HEARTBEAT.md) — next protocol slice (independent of CI/CD)
+### 9. Download assets (optional)
+
+```sh
+gh release download v0.3.2 --dir dist-release
+ls dist-release
+```
+
+Install on a staging host next: [INSTALLATION.md](INSTALLATION.md).
+
+---
+
+## Path C — Staging install from CI artifact (no Release yet)
+
+Use when you want a test host before tagging.
+
+### 1. Pick the latest successful CI run on main
+
+```sh
+gh run list --workflow=ci.yml --branch main --status success --limit 1
+```
+
+### 2. Download `linux-packages` (replace RUN_ID)
+
+```sh
+gh run download RUN_ID -n linux-packages --dir dist-ci
+ls dist-ci
+```
+
+### 3. On the Linux host — install the matching deb
+
+```sh
+sudo apt install ./infrasible-agent_0.3.2_amd64.deb
+sudo /usr/bin/infrasible-agent config validate --config=/etc/infrasible-agent/config.json
+sudo systemctl enable --now infrasible-agent
+sudo systemctl status infrasible-agent --no-pager
+```
+
+(Use `_arm64.deb` on arm64. Full notes: [INSTALLATION.md](INSTALLATION.md).)
+
+---
+
+## What each GitHub workflow does
+
+| Workflow | Trigger | Publishes Release? |
+|---|---|---|
+| [Agent CI](../.github/workflows/ci.yml) | push / PR / manual | No — artifact only |
+| [Agent Release](../.github/workflows/release.yml) | tag `vX.Y.Z` or manual + version | Yes |
+
+---
+
+## If something fails
+
+```sh
+gofmt -w .
+bash scripts/ci-local.sh
+```
+
+```sh
+go mod tidy
+git add go.mod go.sum
+git commit -m "chore: sync go.mod"
+```
+
+```sh
+# Release already exists — bump version.go and ship a new tag, do not reuse
+gh release view v0.3.2
+```
+
+---
+
+## Related
+
+- [INSTALLATION.md](INSTALLATION.md)  
+- [DAEMON_RUNBOOK.md](DAEMON_RUNBOOK.md)  
+- [AGENT_LIVE_HELLO_HEARTBEAT.md](design/AGENT_LIVE_HELLO_HEARTBEAT.md)
