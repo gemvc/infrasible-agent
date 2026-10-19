@@ -33,13 +33,13 @@ The central Live Bridge and Persistence API protocol and durable ACK must be joi
 
 Requires Go 1.23 or newer. For a normal host install, **prefer CI or released artifacts**, not local compilation.
 
+Daily: normal `git add` / `commit` / `push` (CI verifies). To ship:
+
 ```sh
-bash scripts/ci-cd.sh check     # local gate (always before commit/push)
-bash scripts/ci-cd.sh push      # confirm + git push
-bash scripts/ci-cd.sh watch     # follow Agent CI
-bash scripts/ci-cd.sh release X.Y.Z   # tag + publish (when shipping)
+bash scripts/ci-cd.sh last            # show current / latest versions
+bash scripts/ci-cd.sh release X.Y.Z   # after bumping version.go + green CI
 ```
 
-CI verifies every push/PR but **does not publish releases**. See [CI / CD](docs/CI_CD.md).
+See [CI / CD](docs/CI_CD.md).
 
 **License:** MIT. No licensing change is implied by this release.

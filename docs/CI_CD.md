@@ -1,141 +1,80 @@
 # CI / CD — Infrasible Agent
 
-**Policy:** `git push` only **verifies** on GitHub. A **GitHub Release** is published only when you push tag `vX.Y.Z` (or run Agent Release manually).
+**Daily work:** normal `git add` / `git commit` / `git push`. Agent CI verifies on GitHub. That does **not** publish a Release.
 
-**One script to remember:**
-
-```sh
-bash scripts/ci-cd.sh help
-```
+**New release:** use `scripts/ci-cd.sh` only at ship time.
 
 ---
 
-## Everyday (copy-paste)
+## 1. Every day (you)
 
-### 1. Local gate (always)
+```sh
+git add …
+git commit -m "Describe your change."
+git push
+```
+
+Optional before commit if you want a local safety net:
 
 ```sh
 bash scripts/ci-cd.sh check
 ```
 
-This runs: guardrails (no tracked/staged `dist/`) → `gofmt -w` → tidy → vet → `go test -race`.
+---
 
-### 2. Commit your source changes
-
-```sh
-git status
-git add -u
-git add docs .github scripts .gitignore 2>/dev/null || true
-git status
-git commit -m "Describe your change."
-```
-
-Do **not** add `dist/`. The script refuses push if packages are staged.
-
-### 3. Push (asks for confirmation)
+## 2. Before a release — see versions
 
 ```sh
-bash scripts/ci-cd.sh push
+bash scripts/ci-cd.sh last
 ```
 
-### 4. Watch GitHub CI
+Example output:
+
+```text
+version.go (next release must match this after you bump it):  0.3.1
+latest git tag:                                               v0.3.1
+latest GitHub Release:                                        v0.3.1
+```
+
+Then bump `version.go` (and `version_test.go` if needed) to the next semver, commit, push, and wait until Agent CI is green on `main`.
 
 ```sh
-bash scripts/ci-cd.sh watch
+# edit version.go → agentVersion = "0.3.2"
+git add version.go version_test.go
+git commit -m "chore(release): prepare Infrasible Agent v0.3.2"
+git push
+gh run watch
 ```
-
-Green CI = tests + Linux packages artifact. **Not** a Release.
 
 ---
 
-## Optional local packages
-
-```sh
-bash scripts/ci-cd.sh package
-```
-
-Builds under `dist/` (gitignored). Useful before a staging install from your laptop; CI still builds on Ubuntu for the official artifact.
-
----
-
-## Ship a Release (tag = publish)
-
-1. Bump `agentVersion` in `version.go`, commit, push, wait for green CI.
-2. Then:
+## 3. Publish the Release
 
 ```sh
 bash scripts/ci-cd.sh release 0.3.2
 ```
 
-(Use your real semver; must match `version.go`.) Creates `v0.3.2`, pushes the tag, Agent Release publishes assets.
-
-Or without the script:
+(Use the same number as `version.go`.) Confirms with `y/N`, creates tag `v0.3.2`, pushes it; **Agent Release** builds packages and publishes the GitHub Release.
 
 ```sh
-git tag v0.3.2
-git push origin v0.3.2
+gh release view v0.3.2
 ```
 
 ---
 
-## Staging install from CI artifact
+## What not to do
 
-```sh
-gh run list --workflow=ci.yml --branch main --status success --limit 1
-gh run download RUN_ID -n linux-packages --dir dist-ci
-ls dist-ci
-```
-
-Then on the Linux host (see [INSTALLATION.md](INSTALLATION.md)):
-
-```sh
-sudo apt install ./infrasible-agent_0.3.1_amd64.deb
-sudo /usr/bin/infrasible-agent config validate --config=/etc/infrasible-agent/config.json
-sudo systemctl enable --now infrasible-agent
-```
-
----
-
-## What the script prevents
-
-| Mistake | Guard |
-|---|---|
-| Forgetting `gofmt` | `check` formats and fails if still dirty |
-| Forgetting tidy | fails if `go.mod`/`go.sum` drift |
-| Committing `dist/` or `*.sha256` | refused if tracked or staged |
-| Pushing with uncommitted files | `push` requires clean tree |
-| Release version mismatch | `release X.Y.Z` must equal `version.go` |
-| Accidental push/release | interactive `y/N` confirm |
+- Do not commit `dist/` (gitignored; CI builds packages).
+- Do not expect every push to `main` to create a Release.
+- Do not reuse an existing `vX.Y.Z` tag.
 
 ---
 
 ## GitHub workflows
 
-| Workflow | Trigger | Publishes Release? |
+| Workflow | When | Publishes Release? |
 |---|---|---|
-| [Agent CI](../.github/workflows/ci.yml) | push / PR | No |
+| [Agent CI](../.github/workflows/ci.yml) | every push / PR | No |
 | [Agent Release](../.github/workflows/release.yml) | tag `vX.Y.Z` or manual | Yes |
 
----
-
-## If CI fails
-
-```sh
-bash scripts/ci-cd.sh check
-bash scripts/ci-cd.sh package
-```
-
-| Symptom | Fix |
-|---|---|
-| gofmt | already fixed by `check` — commit the reformatted files |
-| dist checksum / `.sha256` | fixed in `package-linux.sh`; never commit `dist/` |
-| Go cache `tar` annotation | ignore — not a real failure |
-| Release exists | bump version; do not reuse the tag |
-
----
-
-## Related
-
-- [INSTALLATION.md](INSTALLATION.md)  
-- [DAEMON_RUNBOOK.md](DAEMON_RUNBOOK.md)  
-- [AGENT_LIVE_HELLO_HEARTBEAT.md](design/AGENT_LIVE_HELLO_HEARTBEAT.md)
+Staging install: [INSTALLATION.md](INSTALLATION.md).
