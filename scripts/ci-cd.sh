@@ -2,8 +2,9 @@
 # Release helper. Daily work stays normal git add / commit / push.
 #
 #   bash scripts/ci-cd.sh last              # show current + latest released version
-#   bash scripts/ci-cd.sh release X.Y.Z     # verify, tag vX.Y.Z, push tag → GitHub Release
-#   bash scripts/ci-cd.sh check             # optional local gate (fmt/tidy/vet/test)
+#   bash scripts/ci-cd.sh version X.Y.Z     # bump version.go, commit prepare message
+#   bash scripts/ci-cd.sh release X.Y.Z     # tag vX.Y.Z, push tag → GitHub Release
+#   bash scripts/ci-cd.sh check             # optional local gate
 #   bash scripts/ci-cd.sh help
 #
 # See docs/CI_CD.md
@@ -33,6 +34,11 @@ confirm() {
   [[ "$reply" == "y" || "$reply" == "Y" ]]
 }
 
+require_semver() {
+  local ver="$1"
+  [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "version must be semver X.Y.Z (got: $ver)"
+}
+
 guardrails() {
   if [[ ! -f .gitignore ]] || ! grep -q '^/dist/' .gitignore; then
     die ".gitignore must ignore /dist/"
@@ -56,7 +62,7 @@ fmt_tidy_vet_test() {
   go mod tidy
   git diff --exit-code -- go.mod go.sum >/dev/null || {
     git diff -- go.mod go.sum || true
-    die "go.mod/go.sum changed — commit them on main before release"
+    die "go.mod/go.sum changed — commit them before continuing"
   }
 
   info "go vet ./..."
@@ -64,6 +70,26 @@ fmt_tidy_vet_test() {
 
   info "go test -race -count=1 ./..."
   go test -race -count=1 ./...
+}
+
+set_version_files() {
+  local ver="$1"
+  local tmp
+  [[ -n "$(agent_version)" ]] || die "could not read agentVersion from version.go"
+
+  tmp="$(mktemp)"
+  sed "s/^const agentVersion = \".*\"/const agentVersion = \"$ver\"/" version.go >"$tmp"
+  mv "$tmp" version.go
+
+  tmp="$(mktemp)"
+  awk -v ver="$ver" '
+    /if agentVersion !=/ { print "\tif agentVersion != \"" ver "\" {"; next }
+    { print }
+  ' version_test.go >"$tmp"
+  mv "$tmp" version_test.go
+
+  [[ "$(agent_version)" == "$ver" ]] || die "failed to set version.go to $ver"
+  grep -q "agentVersion != \"$ver\"" version_test.go || die "failed to update version_test.go"
 }
 
 cmd_last() {
@@ -75,21 +101,15 @@ cmd_last() {
     gh_ver="$(gh release view --json tagName -q .tagName 2>/dev/null || true)"
   fi
 
-  echo "version.go (next release must match this after you bump it):  $source_ver"
-  if [[ -n "$tag" ]]; then
-    echo "latest git tag:                                               $tag"
-  else
-    echo "latest git tag:                                               (none)"
-  fi
-  if [[ -n "$gh_ver" ]]; then
-    echo "latest GitHub Release:                                        $gh_ver"
-  else
-    echo "latest GitHub Release:                                        (none or gh unavailable)"
-  fi
+  echo "version.go:            $source_ver"
+  echo "latest git tag:        ${tag:-"(none)"}"
+  echo "latest GitHub Release: ${gh_ver:-"(none or gh unavailable)"}"
   echo
-  echo "Daily work:  git add / commit / push as usual (Agent CI verifies)."
-  echo "To ship:     1) bump version.go → commit → push → wait for green CI"
-  echo "             2) bash scripts/ci-cd.sh release $source_ver"
+  echo "Next for a new release:"
+  echo "  bash scripts/ci-cd.sh version X.Y.Z"
+  echo "  git push"
+  echo "  # wait for green Agent CI"
+  echo "  bash scripts/ci-cd.sh release X.Y.Z"
 }
 
 cmd_check() {
@@ -98,17 +118,57 @@ cmd_check() {
   ok "local verify passed"
 }
 
+cmd_version() {
+  local ver="${2:-}"
+  [[ -n "$ver" ]] || die "usage: bash scripts/ci-cd.sh version X.Y.Z"
+  require_semver "$ver"
+
+  local current
+  current="$(agent_version)"
+  [[ "$ver" != "$current" ]] || die "version.go is already $ver"
+
+  local branch
+  branch="$(git rev-parse --abbrev-ref HEAD)"
+  [[ "$branch" == "main" ]] || die "bump version on main (currently: $branch)"
+
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    die "working tree dirty — commit or stash your daily work first"
+  fi
+
+  if git ls-remote --exit-code --refs origin "refs/tags/v$ver" >/dev/null 2>&1; then
+    die "origin already has tag v$ver — pick a new version"
+  fi
+
+  echo "Bump agentVersion: $current → $ver"
+  if ! confirm "Update version.go / version_test.go and commit?"; then
+    die "cancelled"
+  fi
+
+  set_version_files "$ver"
+  guardrails
+  fmt_tidy_vet_test
+
+  git add version.go version_test.go
+  git commit -m "chore(release): prepare Infrasible Agent v$ver"
+  ok "committed version bump to $ver"
+  echo
+  echo "You push (as usual):"
+  echo "  git push"
+  echo "Then wait for green Agent CI, then:"
+  echo "  bash scripts/ci-cd.sh release $ver"
+}
+
 cmd_release() {
   local ver="${2:-}"
   [[ -n "$ver" ]] || die "usage: bash scripts/ci-cd.sh release X.Y.Z"
-  [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "version must be semver X.Y.Z (got: $ver)"
+  require_semver "$ver"
 
   guardrails
   fmt_tidy_vet_test
 
   local source_ver
   source_ver="$(agent_version)"
-  [[ "$ver" == "$source_ver" ]] || die "version.go is $source_ver but you passed $ver — bump and commit version.go first"
+  [[ "$ver" == "$source_ver" ]] || die "version.go is $source_ver but you passed $ver — run: bash scripts/ci-cd.sh version $ver"
 
   local branch
   branch="$(git rev-parse --abbrev-ref HEAD)"
@@ -120,7 +180,7 @@ cmd_release() {
 
   git fetch origin main
   [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || \
-    die "main != origin/main — git push (or pull) first, wait for green CI"
+    die "main != origin/main — git push first, wait for green CI"
 
   if git ls-remote --exit-code --refs origin "refs/tags/v$ver" >/dev/null 2>&1; then
     die "origin already has tag v$ver"
@@ -143,24 +203,24 @@ cmd_help() {
   cat <<'EOF'
 scripts/ci-cd.sh
 
-Daily (you do this yourself):
-  git add …
-  git commit -m "…"
-  git push
+Daily (you):
+  git add … && git commit -m "…" && git push
 
-When you want a new release:
-  bash scripts/ci-cd.sh last              # see current / latest versions
-  # bump version.go, commit, push, wait for green Agent CI
-  bash scripts/ci-cd.sh release X.Y.Z     # tag + publish Release
+New release:
+  bash scripts/ci-cd.sh last
+  bash scripts/ci-cd.sh version X.Y.Z    # bump + commit prepare
+  git push                               # you push; wait for green CI
+  bash scripts/ci-cd.sh release X.Y.Z    # tag + GitHub Release
 
 Optional:
-  bash scripts/ci-cd.sh check             # fmt + tidy + vet + race tests
+  bash scripts/ci-cd.sh check
   bash scripts/ci-cd.sh help
 EOF
 }
 
 case "$CMD" in
   last) cmd_last ;;
+  version) cmd_version "$@" ;;
   check) cmd_check ;;
   release) cmd_release "$@" ;;
   help|-h|--help) cmd_help ;;
