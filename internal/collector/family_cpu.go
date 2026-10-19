@@ -12,8 +12,8 @@ type cpuFamily struct {
 	previous []uint64
 }
 
-func (c *cpuFamily) Name() string           { return "cpu" }
-func (c *cpuFamily) CadenceSeconds() int64  { return 1 }
+func (c *cpuFamily) Name() string          { return "cpu" }
+func (c *cpuFamily) CadenceSeconds() int64 { return 1 }
 
 func (c *cpuFamily) Collect(_ context.Context, _ time.Time, _ time.Duration) Observation {
 	cpu, e := readCPU()
