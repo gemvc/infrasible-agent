@@ -37,6 +37,9 @@ for target in amd64 arm64 armv7 armv6; do
     cp LICENSE "$pkg/usr/share/doc/infrasible-agent/copyright"
     install -Dm644 packaging/infrasible-agent.service "$pkg/usr/lib/systemd/system/infrasible-agent.service"
     install -Dm644 packaging/config.example.json "$pkg/usr/share/doc/infrasible-agent/config.example.json"
+    install -Dm755 packaging/debian/postinst "$pkg/DEBIAN/postinst"
+    install -Dm755 packaging/debian/prerm "$pkg/DEBIAN/prerm"
+    install -Dm755 packaging/debian/postrm "$pkg/DEBIAN/postrm"
     printf 'Package: infrasible-agent\nVersion: %s\nSection: admin\nPriority: optional\nArchitecture: %s\nMaintainer: Infrasible Maintainers <maintainers@users.noreply.github.com>\nDescription: Linux monitoring daemon with local SQLite\n' "$VERSION" "$debarch" > "$pkg/DEBIAN/control"
     dpkg-deb --build --root-owner-group "$pkg" "dist/infrasible-agent_${VERSION}_${debarch}.deb"
     rm -rf "$pkg"
@@ -68,7 +71,13 @@ EOF
   find "$top/RPMS" -type f -name '*.rpm' -exec cp {} dist/ \;
   rm -rf "$top"
 fi
-( cd dist && sha256sum infrasible-agent-linux-* *.tar.gz *.deb *.rpm 2>/dev/null | awk '!seen[$2]++' > SHA256SUMS )
+# nullglob so missing .deb/.rpm on hosts without dpkg/rpmbuild do not fail checksums.
+(
+  cd dist
+  shopt -s nullglob
+  files=(infrasible-agent-linux-* *.tar.gz *.deb *.rpm)
+  sha256sum "${files[@]}" | awk '!seen[$2]++' > SHA256SUMS
+)
 # Preserve raw-hash sidecars consumed by the existing Infrasible desktop client.
 for target in amd64 arm64 armv7 armv6; do
   sha256sum "dist/infrasible-agent-linux-$target" | awk '{print $1}' > "dist/infrasible-agent-linux-$target.sha256"

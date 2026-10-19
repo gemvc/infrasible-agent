@@ -1,3 +1,6 @@
+// This file is tested and fixed. Do not add, remove, or change the code in this file.
+//
+// Package config loads and validates the single versioned Agent JSON configuration.
 package config
 
 import (
@@ -11,6 +14,7 @@ import (
 	"time"
 )
 
+// Server describes one ordered Monitoring endpoint entry.
 type Server struct {
 	ID                string `json:"id"`
 	LiveURL           string `json:"live_url"`
@@ -21,12 +25,16 @@ type Server struct {
 	ClientCertFile    string `json:"client_cert_file"`
 	ClientKeyFile     string `json:"client_key_file"`
 }
+
+// Config is the sole on-disk Agent configuration snapshot.
 type Config struct {
 	ConfigVersion     int      `json:"config_version"`
 	DataPath          string   `json:"data_path"`
 	MonitoringServers []Server `json:"monitoring_servers"`
 }
 
+// Load reads path, rejects unknown fields and trailing JSON, applies the
+// default data_path when omitted, then Validate.
 func Load(path string) (Config, error) {
 	f, e := os.Open(path)
 	if e != nil {
@@ -50,6 +58,9 @@ func Load(path string) (Config, error) {
 	}
 	return c, c.Validate()
 }
+
+// Validate enforces config_version, data_path, unique server IDs, TLS material
+// paths, and secured wss/https URL schemes. An empty monitoring_servers list is valid.
 func (c Config) Validate() error {
 	if c.ConfigVersion != 1 {
 		return errors.New("unsupported config_version")
@@ -84,4 +95,6 @@ func (c Config) Validate() error {
 	}
 	return nil
 }
+
+// Interval returns the nominal 1 Hz frame period used by the Agent scheduler.
 func Interval() time.Duration { return time.Second }

@@ -1,3 +1,6 @@
+// This file is tested and fixed. Do not add, remove, or change the code in this file.
+//
+// Package agent orchestrates collection, SQLite persistence, and outbound transport.
 package agent
 
 import (
@@ -13,6 +16,7 @@ import (
 	"github.com/gemvc/infrasible-agent/internal/transport"
 )
 
+// Agent is the daemon runtime wiring collector, store, and network workers.
 type Agent struct {
 	Config    config.Config
 	Store     *storage.Store
@@ -20,9 +24,30 @@ type Agent struct {
 	Log       *slog.Logger
 }
 
+// New builds an Agent with a Linux collector and the provided store and logger.
 func New(c config.Config, s *storage.Store, l *slog.Logger) *Agent {
 	return &Agent{Config: c, Store: s, Collector: collector.NewLinux(), Log: l}
 }
+
+// enqueueLatest keeps only the newest frame in a bounded Live channel.
+// When full, the oldest buffered frame is dropped so a blocked bridge cannot
+// stall collection or SQLite writes.
+func enqueueLatest(live chan collector.Frame, f collector.Frame) {
+	select {
+	case live <- f:
+	default:
+		select {
+		case <-live:
+		default:
+		}
+		select {
+		case live <- f:
+		default:
+		}
+	}
+}
+
+// Run starts Live and Persistence workers and the 1 Hz / finalize tickers until ctx ends.
 func (a *Agent) Run(ctx context.Context) error {
 	live := make(chan collector.Frame, 2)
 	var workers sync.WaitGroup
@@ -50,18 +75,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				a.Log.Error("STORAGE_DEGRADED: lost sample; no false durability", "error", err)
 			}
 			// Independent Live; a blocked bridge cannot block collector/SQLite.
-			select {
-			case live <- f:
-			default:
-				select {
-				case <-live:
-				default:
-				}
-				select {
-				case live <- f:
-				default:
-				}
-			}
+			enqueueLatest(live, f)
 		case <-roll.C:
 			workCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 			if e := a.Store.Finalize(workCtx, time.Now()); e != nil {

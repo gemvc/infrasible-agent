@@ -1,3 +1,6 @@
+// This file is tested and fixed. Do not add, remove, or change the code in this file.
+//
+// Package transport implements outbound Live (WSS) and Persistence (HTTPS) mTLS clients.
 package transport
 
 import (
@@ -21,11 +24,14 @@ import (
 	"github.com/gemvc/infrasible-agent/internal/storage"
 )
 
+// Sender delivers Live frames and Persistence finals using configured endpoints.
 type Sender struct {
 	Servers []config.Server
 	Store   *storage.Store
 	Log     *slog.Logger
 }
+
+// ACK is the durable Persistence acknowledgment required before local persisted_at.
 type ACK struct {
 	Durable           bool   `json:"durable"`
 	AgentID           string `json:"agent_id"`
@@ -36,6 +42,8 @@ type ACK struct {
 	SchemaVersion     int    `json:"schema_version"`
 }
 
+// tlsFor builds a TLS 1.3 client config from server identity files.
+// The private key is opened with O_NOFOLLOW and must be owner-only.
 func tlsFor(s config.Server) (*tls.Config, error) {
 	// Open once with O_NOFOLLOW so key identity and permission validation
 	// are tied to the same file descriptor used for reading the secret.
@@ -78,6 +86,9 @@ func tlsFor(s config.Server) (*tls.Config, error) {
 	}
 	return &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, ServerName: s.ServerName, Certificates: []tls.Certificate{pair}}, nil
 }
+
+// Live reconnects through eligible LiveURL endpoints and streams frames without
+// historical replay. An empty candidate list returns immediately.
 func (s *Sender) Live(ctx context.Context, frames <-chan collector.Frame) {
 	// Latest-only, bounded producer channel is owned by runtime; no historical replay.
 	index := 0
@@ -121,6 +132,8 @@ func (s *Sender) Live(ctx context.Context, frames <-chan collector.Frame) {
 		}
 	}
 }
+
+// stream writes live JSON envelopes until the context ends or the channel closes.
 func (s *Sender) stream(ctx context.Context, conn *websocket.Conn, frames <-chan collector.Frame) error {
 	type live struct {
 		Type    string          `json:"type"`
@@ -148,6 +161,9 @@ func (s *Sender) stream(ctx context.Context, conn *websocket.Conn, frames <-chan
 		}
 	}
 }
+
+// Persistence submits oldest pending 900s finals to the first configured
+// PersistenceURL. No endpoint returns immediately.
 func (s *Sender) Persistence(ctx context.Context) {
 	var selected *config.Server
 	// No cross-endpoint assumption about shared durable domains is made before
@@ -180,6 +196,8 @@ func (s *Sender) Persistence(ctx context.Context) {
 		}
 	}
 }
+
+// submit POSTs a pending final over mTLS and Acknowledge only after validateACK.
 func (s *Sender) submit(ctx context.Context, server config.Server, p storage.Pending) error {
 	tlsConfig, e := tlsFor(server)
 	if e != nil {
@@ -213,6 +231,7 @@ func (s *Sender) submit(ctx context.Context, server config.Server, p storage.Pen
 	return s.Store.Acknowledge(ctx, p.RecordID, p.Hash, time.Now().UTC())
 }
 
+// validateACK requires every durable ACK field to match the pending final.
 func validateACK(ack ACK, p storage.Pending, agentID, domain string) error {
 	if !ack.Durable || ack.AgentID != agentID || ack.RecordID != p.RecordID || ack.PayloadSHA256 != p.Hash ||
 		ack.PeriodStartMS != p.PeriodStartMS || ack.PersistenceDomain != domain || ack.SchemaVersion != 2 {

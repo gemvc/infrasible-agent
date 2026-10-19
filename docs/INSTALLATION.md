@@ -12,27 +12,20 @@ Match the Linux OS architecture using `uname -m` and `dpkg --print-architecture`
 
 Verify checksums for the downloaded matching package from `SHA256SUMS` when present. SHA-256 alone does **not** authenticate the publisher or protect against a compromised CI account.
 
-## Install on Ubuntu/Debian test host
+## Install on Ubuntu/Debian staging host
 
 After downloading/extracting artifacts to the Linux machine:
 
 ```sh
 sudo apt install ./infrasible-agent_0.3.1_amd64.deb
-sudo useradd --system --home-dir /var/lib/infrasible-agent --shell /usr/sbin/nologin infrasible-agent
-sudo install -d -m 0750 -o infrasible-agent -g infrasible-agent /var/lib/infrasible-agent
-sudo install -d -m 0750 /etc/infrasible-agent
-sudo install -m 0640 -o root -g infrasible-agent \
-  /usr/share/doc/infrasible-agent/config.example.json \
-  /etc/infrasible-agent/config.json
-sudo systemctl daemon-reload
 sudo /usr/bin/infrasible-agent config validate --config=/etc/infrasible-agent/config.json
 sudo systemctl enable --now infrasible-agent
 sudo systemctl status infrasible-agent --no-pager
 ```
 
-The sample config specifies an empty monitoring server list. It does **not** make the Agent a connected or registered production monitor. Package installation does **not** create the service user, install production certificates, enroll the agent, enable or start the service automatically.
+The Debian package `postinst` creates the `infrasible-agent` system user, `/var/lib/infrasible-agent` (0750), `/etc/infrasible-agent`, and installs `config.example.json` as `/etc/infrasible-agent/config.json` only when that file is absent. It does **not** enable or start the service; that remains an operator choice. The sample config uses an empty `monitoring_servers` list for **offline staging collection only**. It does not enroll certificates or connect to a production Monitoring relay.
 
-For subsequent installs use `id infrasible-agent` before attempting to create an existing user. For tarballs, install the binary to `/usr/bin/infrasible-agent`, its `infrasible-agent.service` to `/etc/systemd/system/infrasible-agent.service`, and its `config.example.json` to `/etc/infrasible-agent/config.json` with the same ownership rules.
+For tarballs, install the binary to `/usr/bin/infrasible-agent`, its `infrasible-agent.service` to `/etc/systemd/system/infrasible-agent.service`, create the same user and directories manually, and copy `config.example.json` to `/etc/infrasible-agent/config.json` with ownership `root:infrasible-agent` mode `0640`. Generated RPMs remain binary-only (no unit or config).
 
 ## Validate data collection and management
 

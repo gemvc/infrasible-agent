@@ -1,6 +1,6 @@
 # Infrasible Monitoring Agent
 
-**Current development version: 0.3.1 (daemon v2).** This repository contains a standalone Linux monitoring daemon written in Go. The daemon runs under systemd as a non-root user, measures Linux host metrics, keeps local SQLite history, and has outbound-only WSS Live and HTTPS Persistence clients. This version is an **implementation candidate, not production-certified**. There is no inbound HTTP management port.
+**Current development version: 0.3.1 (daemon v2).** This repository contains a standalone Linux monitoring daemon written in Go. The daemon runs under systemd as a non-root user, measures Linux host metrics, keeps local SQLite history, and has outbound-only WSS Live and HTTPS Persistence clients. This version is **staging-ready for offline/local collection** (empty `monitoring_servers`), **not production-certified** against central Bridge/PKI. There is no inbound HTTP management port.
 
 ## Source of truth
 
@@ -17,7 +17,7 @@ The implementation in source code takes precedence for *currently available comm
 - Linux systemd daemon with a single 1 Hz frame loop and due families: CPU, memory, network and disk I/O at 1s, load at 5s and filesystem capacity at 30s.
 - Three SQLite application tables (`server_info`, `raw_samples`, `aggregates`) in WAL/FULL mode with transactional minute and quarter-hour rollups and replayable pending 15-minute payloads.
 - Local CLI: `run`, `config validate`, `health status`, `storage status`, `storage cleanup --dry-run` and `storage cleanup --safe`.
-- Initial mTLS-protected outbound WebSocket and HTTP clients, packaging for Linux amd64, arm64, armv7 and armv6, and an automated Go test/cross-build pipeline.
+- Initial mTLS-protected outbound WebSocket and HTTP clients, packaging for Linux amd64, arm64, armv7 and armv6 (deb postinst creates user/dirs/config for staging), and an automated Go test/cross-build pipeline.
 
 ## Development milestone 0.3.1
 
@@ -25,7 +25,7 @@ This patch release builds on v0.3.0 with per-family raw/minute/15-minute quality
 
 ## Not yet production-ready
 
-The central Live Bridge and Persistence API protocol and durable ACK must be jointly accepted; PKI enrollment, renewal and revocation, registered-domain failover, complete freshness/coverage reporting, Desktop management UX, signed release provenance, and native durability/resource/soak testing are incomplete. Do not install on production infrastructure on the strength of CI green checks alone. An empty `monitoring_servers` array permits **offline local testing only**.
+The central Live Bridge and Persistence API protocol and durable ACK must be jointly accepted; PKI enrollment, renewal and revocation, registered-domain failover, complete freshness/coverage reporting, Desktop management UX, signed release provenance, and native durability/resource/soak testing are incomplete. Do not install on production monitoring infrastructure on the strength of CI green checks alone. An empty `monitoring_servers` array is the supported **offline staging** mode.
 
 ## Development
 

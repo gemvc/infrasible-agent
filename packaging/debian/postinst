@@ -1,0 +1,25 @@
+#!/bin/sh
+# Staging-oriented postinst: create service account and directories.
+# Does not enable or start the daemon; the operator chooses when to activate.
+set -e
+
+case "$1" in
+configure)
+	if ! getent passwd infrasible-agent >/dev/null 2>&1; then
+		useradd --system --home-dir /var/lib/infrasible-agent --shell /usr/sbin/nologin \
+			--comment "Infrasible Monitoring Agent" infrasible-agent
+	fi
+	install -d -m 0750 -o infrasible-agent -g infrasible-agent /var/lib/infrasible-agent
+	install -d -m 0750 -o root -g infrasible-agent /etc/infrasible-agent
+	if [ ! -e /etc/infrasible-agent/config.json ]; then
+		install -m 0640 -o root -g infrasible-agent \
+			/usr/share/doc/infrasible-agent/config.example.json \
+			/etc/infrasible-agent/config.json
+	fi
+	if command -v systemctl >/dev/null 2>&1; then
+		systemctl daemon-reload || true
+	fi
+	;;
+esac
+
+exit 0

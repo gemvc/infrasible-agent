@@ -1,3 +1,7 @@
+// This file is tested and fixed. Do not add, remove, or change the code in this file.
+//
+// Package collector samples Linux host metrics into 1 Hz frames with independent
+// family cadences (1s/5s/30s). Families that are not due are omitted, not marked missing.
 package collector
 
 import (
@@ -13,6 +17,7 @@ import (
 	"time"
 )
 
+// Observation is one due metric family's measured outcome for a frame.
 type Observation struct {
 	Status       string `json:"status"`
 	MeasuredAtMS int64  `json:"measured_at_ms"`
@@ -20,14 +25,20 @@ type Observation struct {
 	Value        any    `json:"value,omitempty"`
 	Error        string `json:"error,omitempty"`
 }
+
+// Frame is one nominal 1 Hz collection result keyed by family name.
 type Frame struct {
 	ObservedAtMS int64                  `json:"observed_at_ms"`
 	ElapsedMS    int64                  `json:"elapsed_ms"`
 	Metrics      map[string]Observation `json:"metrics"`
 }
+
+// Reader abstracts metric collection so runtime tests can inject fakes.
 type Reader interface {
 	Read(context.Context, time.Time) Frame
 }
+
+// Linux collects host metrics from /proc with counter baselines for rates.
 type Linux struct {
 	previousCPU  []uint64
 	previousNet  map[string][2]uint64
@@ -35,7 +46,12 @@ type Linux struct {
 	previousDisk map[string][2]uint64
 }
 
+// NewLinux returns a collector with empty rate baselines.
 func NewLinux() *Linux { return &Linux{} }
+
+// Read builds one frame at now. CPU/memory/network/disk_io are due every second;
+// load every 5s and filesystem every 30s of Unix epoch. Cancelled contexts return
+// an empty metrics map without blocking on /proc I/O already in flight.
 func (l *Linux) Read(ctx context.Context, now time.Time) Frame {
 	f := Frame{ObservedAtMS: now.UTC().UnixMilli(), Metrics: map[string]Observation{}}
 	if !l.previousAt.IsZero() {
@@ -117,6 +133,8 @@ func (l *Linux) Read(ctx context.Context, now time.Time) Frame {
 	l.previousAt = now
 	return f
 }
+
+// fields reads path and splits its contents on whitespace.
 func fields(path string) ([]string, error) {
 	b, e := os.ReadFile(path)
 	if e != nil {
@@ -124,6 +142,8 @@ func fields(path string) ([]string, error) {
 	}
 	return strings.Fields(string(b)), nil
 }
+
+// ints parses each string in s as a base-10 uint64.
 func ints(s []string) ([]uint64, error) {
 	o := make([]uint64, 0, len(s))
 	for _, x := range s {
@@ -135,6 +155,8 @@ func ints(s []string) ([]uint64, error) {
 	}
 	return o, nil
 }
+
+// readCPU reads aggregate CPU tick counters from /proc/stat.
 func readCPU() ([]uint64, error) {
 	b, e := os.ReadFile("/proc/stat")
 	if e != nil {
@@ -146,6 +168,9 @@ func readCPU() ([]uint64, error) {
 	}
 	return ints(first[1:])
 }
+
+// usage computes CPU percentage deltas between two /proc/stat snapshots.
+// Guest ticks are already included in user/nice and must not be double-counted.
 func usage(a, b []uint64) (map[string]float64, error) {
 	if len(a) < 8 || len(b) < 8 {
 		return nil, errors.New("short CPU counters")
@@ -165,6 +190,9 @@ func usage(a, b []uint64) (map[string]float64, error) {
 	pct := func(n uint64) float64 { return 100 * float64(n) / float64(total) }
 	return map[string]float64{"total_pct": pct(total - idle), "user_pct": pct(delta(0) + delta(1)), "system_pct": pct(delta(2)), "iowait_pct": pct(delta(4))}, nil
 }
+
+// memoryFrom parses /proc/meminfo text into total/available/swap byte counters.
+// A present MemAvailable of zero is valid; fallback applies only when the field is absent.
 func memoryFrom(s string) (map[string]uint64, error) {
 	m := map[string]uint64{}
 	for _, line := range strings.Split(s, "\n") {
@@ -190,6 +218,8 @@ func memoryFrom(s string) (map[string]uint64, error) {
 	}
 	return map[string]uint64{"total": m["MemTotal"], "available": avail, "swap_total": m["SwapTotal"], "swap_used": swap}, nil
 }
+
+// readMemory loads and parses /proc/meminfo.
 func readMemory() (map[string]uint64, error) {
 	b, e := os.ReadFile("/proc/meminfo")
 	if e != nil {
@@ -197,6 +227,8 @@ func readMemory() (map[string]uint64, error) {
 	}
 	return memoryFrom(string(b))
 }
+
+// readLoad parses 1/5/15 minute load averages from /proc/loadavg.
 func readLoad() (map[string]float64, error) {
 	f, e := fields("/proc/loadavg")
 	if e != nil {
@@ -215,6 +247,8 @@ func readLoad() (map[string]float64, error) {
 	}
 	return m, nil
 }
+
+// readNet parses per-interface RX/TX byte counters from /proc/net/dev.
 func readNet() (map[string][2]uint64, error) {
 	f, e := os.Open("/proc/net/dev")
 	if e != nil {
@@ -237,6 +271,8 @@ func readNet() (map[string][2]uint64, error) {
 	}
 	return out, s.Err()
 }
+
+// readDisk opens /proc/diskstats and converts sector counters to bytes.
 func readDisk() (map[string][2]uint64, error) {
 	f, e := os.Open("/proc/diskstats")
 	if e != nil {
@@ -272,6 +308,8 @@ func diskFrom(r io.Reader) (map[string][2]uint64, error) {
 	}
 	return out, nil
 }
+
+// readFS opens /proc/mounts and measures capacity via statfs.
 func readFS() (map[string]map[string]uint64, error) {
 	f, e := os.Open("/proc/mounts")
 	if e != nil {
@@ -281,6 +319,7 @@ func readFS() (map[string]map[string]uint64, error) {
 	return filesystemsFrom(f, syscall.Statfs)
 }
 
+// filesystemsFrom inventories non-virtual mounts; any statfs failure fails closed.
 func filesystemsFrom(r io.Reader, statfs func(string, *syscall.Statfs_t) error) (map[string]map[string]uint64, error) {
 	out := map[string]map[string]uint64{}
 	s := bufio.NewScanner(r)

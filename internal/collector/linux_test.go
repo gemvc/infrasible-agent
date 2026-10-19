@@ -1,11 +1,13 @@
 package collector
 
 import (
+	"context"
 	"errors"
 	"math"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 func TestSwap(t *testing.T) {
@@ -84,5 +86,35 @@ func TestMemoryAvailableFallbackOnlyWhenFieldIsAbsent(t *testing.T) {
 	}
 	if got["available"] != 450*1024 {
 		t.Fatalf("missing MemAvailable did not use documented fallback: %+v", got)
+	}
+}
+
+func TestLoadAndFilesystemCadenceOmitWhenNotDue(t *testing.T) {
+	l := NewLinux()
+	ctx := context.Background()
+	// Unix 1 is not divisible by 5 or 30: load and filesystem must be omitted.
+	notDue := l.Read(ctx, time.Unix(1, 0).UTC())
+	if _, ok := notDue.Metrics["load"]; ok {
+		t.Fatal("load present when not due")
+	}
+	if _, ok := notDue.Metrics["filesystem"]; ok {
+		t.Fatal("filesystem present when not due")
+	}
+	// Unix 30 is due for both 5s load and 30s filesystem.
+	due := NewLinux().Read(ctx, time.Unix(30, 0).UTC())
+	if _, ok := due.Metrics["load"]; !ok {
+		t.Fatal("load missing when due at epoch 30")
+	}
+	if _, ok := due.Metrics["filesystem"]; !ok {
+		t.Fatal("filesystem missing when due at epoch 30")
+	}
+}
+
+func TestCancelledContextSkipsCollection(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	f := NewLinux().Read(ctx, time.Unix(30, 0).UTC())
+	if len(f.Metrics) != 0 {
+		t.Fatalf("expected empty metrics on cancelled context: %+v", f.Metrics)
 	}
 }

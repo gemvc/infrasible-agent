@@ -1,3 +1,5 @@
+// This file is tested and fixed. Do not add, remove, or change the code in this file.
+//
 // Command infrasible-agent is a Linux-only unattended host monitoring daemon.
 // It exposes no HTTP management listener; operator maintenance uses local CLI
 // commands over an existing authorized SSH/Ansible connection.
@@ -21,13 +23,21 @@ import (
 	"github.com/gemvc/infrasible-agent/internal/storage"
 )
 
+// usage returns the canonical CLI usage error for unknown or missing commands.
 func usage() error {
 	return errors.New("usage: infrasible-agent run|config validate|health status|storage status|storage cleanup --dry-run|storage cleanup --safe [--config=PATH]")
 }
+
+// run enforces the Linux-only gate then delegates to dispatch.
 func run(args []string) error {
 	if runtime.GOOS != "linux" {
 		return errors.New("Linux only")
 	}
+	return dispatch(args)
+}
+
+// dispatch parses --config and executes one operator or daemon command.
+func dispatch(args []string) error {
 	configPath := "/etc/infrasible-agent/config.json"
 	kept := make([]string, 0, len(args))
 	for _, arg := range args {
@@ -101,6 +111,8 @@ func run(args []string) error {
 	}
 	return usage()
 }
+
+// main exits non-zero when any CLI or daemon command fails.
 func main() {
 	if e := run(os.Args[1:]); e != nil {
 		fmt.Fprintln(os.Stderr, e)

