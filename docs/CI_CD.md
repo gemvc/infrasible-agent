@@ -1,8 +1,14 @@
 # CI / CD — Infrasible Agent
 
-**Daily work:** normal `git add` / `git commit` / `git push`. Agent CI verifies. That does **not** publish a Release.
+Local script and GitHub Actions share one model:
 
-**New release:** use `scripts/ci-cd.sh`.
+| Where | When | What |
+|---|---|---|
+| You + `scripts/ci-cd.sh` | daily / ship | check, version bump, tag |
+| **Agent CI** | every push / PR | fast verify only (`gofmt`, tidy, vet, race tests) |
+| **Agent Release** | tag `vX.Y.Z` only | package Linux artifacts + GitHub Release |
+
+Push to `main` never publishes a Release. Packaging runs only on release tags (keeps daily CI fast).
 
 ---
 
@@ -12,6 +18,14 @@
 git add …
 git commit -m "Describe your change."
 git push
+bash scripts/ci-cd.sh watch    # optional
+bash scripts/ci-cd.sh web      # optional
+```
+
+Optional local gate before commit:
+
+```sh
+bash scripts/ci-cd.sh check
 ```
 
 ---
@@ -24,40 +38,27 @@ bash scripts/ci-cd.sh last
 
 ---
 
-## 3. Bump version (script)
+## 3. Bump version
 
 ```sh
 bash scripts/ci-cd.sh version 0.3.2
-```
-
-Updates `version.go` + `version_test.go`, runs local tests, commits the prepare message.
-
-Then **you** push and watch CI:
-
-```sh
 git push
 bash scripts/ci-cd.sh watch
 bash scripts/ci-cd.sh web
 ```
 
-- `watch` → `gh run watch` (live steps in the terminal)
-- `web` → `gh run view --web` (open the run in the browser)
-
 ---
 
-## 4. Publish Release (script)
+## 4. Publish Release
 
 ```sh
 bash scripts/ci-cd.sh release 0.3.2
-```
-
-Same number as in step 3. Creates tag `v0.3.2`, pushes it; Agent Release publishes packages.
-
-```sh
 bash scripts/ci-cd.sh watch
 bash scripts/ci-cd.sh web
 gh release view v0.3.2
 ```
+
+`release` pushes tag `v0.3.2` → **Agent Release** builds packages and publishes.
 
 ---
 
@@ -68,21 +69,15 @@ bash scripts/ci-cd.sh last
 bash scripts/ci-cd.sh version 0.3.2
 git push
 bash scripts/ci-cd.sh watch
-bash scripts/ci-cd.sh web
 bash scripts/ci-cd.sh release 0.3.2
+bash scripts/ci-cd.sh watch
 ```
 
 ---
 
 ## Notes
 
-- Do not commit `dist/` (gitignored).
-- Push to `main` never creates a Release by itself.
+- Do not commit `dist/` (gitignored). Packages appear on the GitHub Release only.
+- Need a `.deb` without tagging? `bash scripts/package-linux.sh` locally.
+- Staging install: [INSTALLATION.md](INSTALLATION.md).
 - Do not reuse an existing `vX.Y.Z` tag.
-
-| Workflow | When | Publishes Release? |
-|---|---|---|
-| [Agent CI](../.github/workflows/ci.yml) | every push / PR | No |
-| [Agent Release](../.github/workflows/release.yml) | tag `vX.Y.Z` | Yes |
-
-Staging install: [INSTALLATION.md](INSTALLATION.md).

@@ -1,5 +1,5 @@
-# Continuous Integration — verify only. Does NOT publish releases or deploy.
-# Ship artifacts with Agent Release (tag / workflow_dispatch). See docs/CI_CD.md.
+# Fast verify on every push/PR — same checks as: bash scripts/ci-cd.sh check
+# Does NOT build packages or publish releases. See docs/CI_CD.md
 name: Agent CI
 on:
   push:
@@ -17,58 +17,20 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Verify Go formatting
+      - name: gofmt
         run: |
           set -euo pipefail
           unformatted="$(gofmt -l .)"
           if [[ -n "$unformatted" ]]; then
-            echo "::error::Go files need gofmt -w . — unformatted:"
+            echo "::error::Run: gofmt -w ."
             echo "$unformatted"
             exit 1
           fi
-      - name: Resolve pinned module dependencies
+      - name: tidy
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
-      - name: Test and lint
+      - name: vet and test
         run: |
           go vet ./...
           go test -race -count=1 ./...
-
-  package:
-    needs: verify
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Build all architectures and packages
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y rpm
-          bash scripts/package-linux.sh
-          (cd dist && sha256sum -c SHA256SUMS)
-          dpkg-deb --info dist/infrasible-agent_*_amd64.deb
-          rpm -qip dist/*.rpm
-      - name: Daemon and storage CLI smoke
-        run: |
-          set -euo pipefail
-          printf '{"config_version":1,"data_path":"%s/agent.db","monitoring_servers":[]}\n' "$RUNNER_TEMP" > "$RUNNER_TEMP/config.json"
-          ./dist/infrasible-agent-linux-amd64 config validate --config="$RUNNER_TEMP/config.json" | grep -Fq '"valid":true'
-          # First run is the ONLY operation permitted to bootstrap new Agent identity.
-          set +e
-          timeout -s TERM 3s ./dist/infrasible-agent-linux-amd64 run --config="$RUNNER_TEMP/config.json" > "$RUNNER_TEMP/agent.log" 2>&1
-          result=$?
-          set -e
-          test "$result" -eq 124
-          ./dist/infrasible-agent-linux-amd64 storage status --config="$RUNNER_TEMP/config.json" | grep -Fq '"pending":0'
-          ./dist/infrasible-agent-linux-amd64 health status --config="$RUNNER_TEMP/config.json" | grep -Fq '"sqlite_ready":true'
-          ./dist/infrasible-agent-linux-amd64 storage cleanup --dry-run --config="$RUNNER_TEMP/config.json" | grep -Fq '"dry_run":true'
-      - uses: actions/upload-artifact@v5
-        with:
-          name: linux-packages
-          path: dist/
-          if-no-files-found: error
-          retention-days: 14

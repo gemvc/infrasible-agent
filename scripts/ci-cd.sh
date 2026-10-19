@@ -217,10 +217,10 @@ cmd_release() {
   git tag "v$ver"
   git push origin "v$ver"
   ok "tag v$ver pushed — Agent Release publishes packages"
-  echo "Watch release workflow:"
+  echo "Agent Release is packaging + publishing. Follow it with:"
   echo "  bash scripts/ci-cd.sh watch"
   echo "  bash scripts/ci-cd.sh web"
-  echo "View release: gh release view v$ver"
+  echo "When done: gh release view v$ver"
 }
 
 cmd_help() {

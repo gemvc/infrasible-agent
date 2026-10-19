@@ -24,7 +24,7 @@ Authoritative install detail: [INSTALLATION.md](../INSTALLATION.md). Summary bel
 ### 1.2 Preparation checklist
 
 1. **Host:** Ubuntu/Debian Linux (amd64 or arm64), disposable or non-critical.
-2. **Artifact:** Latest successful [Agent CI](https://github.com/gemvc/infrasible-agent/actions/workflows/ci.yml) → Artifacts → `linux-packages`, or build with `bash scripts/package-linux.sh` and copy the matching `.deb`.
+2. **Artifact:** A [GitHub Release](https://github.com/gemvc/infrasible-agent/releases) package, or build locally with `bash scripts/package-linux.sh` and copy the matching `.deb`.
 3. **Architecture:** `uname -m` and `dpkg --print-architecture` → use `infrasible-agent_0.3.1_amd64.deb` or `_arm64.deb`.
 4. **Checksum:** verify the chosen file against `SHA256SUMS` (integrity only; not publisher authentication).
 5. **Expectations:** default config has empty `monitoring_servers` — no Relay, no certificates required for offline staging.
