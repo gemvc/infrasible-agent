@@ -2,7 +2,7 @@
 package main
 
 // agentVersion is the semver stamped into packages and release tags.
-const agentVersion = "0.3.6"
+const agentVersion = "0.3.7"
 
 // protocolMajor is the daemon wire protocol major version.
 const protocolMajor = 2

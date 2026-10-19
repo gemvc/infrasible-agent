@@ -3,7 +3,7 @@ package main
 import "testing"
 
 func TestAgentVersion(t *testing.T) {
-	if agentVersion != "0.3.6" {
+	if agentVersion != "0.3.7" {
 		t.Fatalf("unexpected agent version: %s", agentVersion)
 	}
 }
