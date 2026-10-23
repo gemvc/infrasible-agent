@@ -1,5 +1,8 @@
 # Infrasible Monitoring Agent — Phased Implementation Backlog
 
+> **Historical implementation plan and acceptance requirements, not current task status.** Several phases described here are implemented. Use [STATUS](../STATUS.md) for the authoritative shipped/blocked verdict and [DOCUMENTATION](../DOCUMENTATION.md) for document ownership. A phase title or old `BACKLOG / NOT IMPLEMENTED` statement below is not evidence that the current CLI/service lacks a feature. Revalidate remaining acceptance against source and tests before scheduling work.
+
+
 > **Note:** Target/acceptance text below. For current shipped behavior and verdict see [STATUS.md](../STATUS.md), [README](../../README.md), and operator docs under `docs/`. Relay builders: [MONITORING_RELAY.md](MONITORING_RELAY.md).
 
 **Status:** FINAL OWNER-APPROVED PRODUCT/ENGINEERING ARCHITECTURE (DEC-01–11 + AD-01–03, 2026-10-18); G00 EVIDENCE / EXTERNAL SIGN-OFF PENDING; INITIAL DAEMON CODE EXISTS; EXTERNAL SIGN-OFF AND ACCEPTANCE PENDING  
