@@ -13,11 +13,11 @@ This file is the **only** documentation source of truth for what is staging-read
 | Offline staging (empty `monitoring_servers`) | **PASS** — collect, SQLite, health/storage CLI, Linux packages |
 | Live against lab/mock Bridge (mTLS + Hello + `type: live` + heartbeat) | **PASS** — lab-proven (published v0.3.8, 2026-10-19); wire unchanged for later releases |
 | Collector Family registry + `enabled_families` | **PASS** — compile-time modules; config toggle; restart required |
-| Production Monitoring Relay + PKI + Desktop fan-out | **NOT READY** — implement Relay per [MONITORING_RELAY.md](design/MONITORING_RELAY.md); external sign-off required |
+| Central Relay implementation + Desktop fan-out | **IMPLEMENTED / LAB PASS** — [Relay repository](https://github.com/gemvc/infrasible-monitoring-server) reports Go implementation, Agent mTLS lab path and Desktop subscriber endpoint; Desktop operator reported successful Agent → Relay → Desktop Live on 2026-10-23. This is not production PKI/registrar certification. |
 | Persistence durable ACK / domain failover | **NOT READY** — external Persistence contract |
 | Full acceptance (G00 / P00–P11) | **BLOCKED** on central interfaces |
 
-**Bottom line:** The Agent is staging-ready for local collection and lab Live. It is **not** production-certified for central monitoring until Relay, registrar/PKI, and Persistence owners ship compatible services.
+**Bottom line:** Local collection and lab Live are staging-ready, and the separately maintained Relay now implements Live fan-out; an operator reported successful end-to-end Desktop Live on 2026-10-23. Central Production certification remains blocked by PKI/registrar lifecycle, persistence durable ACK, and full acceptance/security/recovery evidence. See [Relay STATUS](https://github.com/gemvc/infrasible-monitoring-server/blob/main/docs/STATUS.md) for the Relay's own verdict. 
 
 ## What to read
 
@@ -32,7 +32,7 @@ This file is the **only** documentation source of truth for what is staging-read
 
 ## Next work (priority)
 
-1. Monitoring Relay implements [MONITORING_RELAY.md](design/MONITORING_RELAY.md) (many Agents, trust layers A–D).  
+1. **Qualification, not implementation:** validate the already-implemented Relay + Desktop path against production trust/ACL, restart/reconnect, subscriber backpressure and stale semantics. Relay owner: [Relay STATUS](https://github.com/gemvc/infrasible-monitoring-server/blob/main/docs/STATUS.md).  
 2. PKI/registrar: enroll, bind cert ↔ `agent_id` ↔ Live ACL, rotate/revoke.  
 3. Persistence API: durable ACK fixtures; then optional Agent failover.  
 4. Optional later: real `docker` / `gpu` Family modules (extension path already documented).  
