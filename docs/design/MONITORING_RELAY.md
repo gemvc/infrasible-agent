@@ -10,17 +10,11 @@
 
 ---
 
-## Final verdict (Agent ↔ Relay)
+## Readiness and implementation status
 
-| Area | Verdict |
-|---|---|
-| Agent local collect / SQLite / packaging | **Ready** for staging |
-| Agent Live client (mTLS, Hello, heartbeat, `type: live`) | **Ready** against a Relay that implements this guide |
-| Agent ↔ production Relay / PKI / Desktop fan-out | **Not certified** until Relay + registrar + PKI owners sign off |
-| Persistence durable ACK / domain HA | **External** — not Relay scope |
-| Production monitoring path | **Blocked** on central contracts, not on Agent packaging |
+Do not maintain a second ship/pass/fail matrix here. Agent readiness and outstanding acceptance are owned by [Agent STATUS](../STATUS.md); the independently implemented Relay owns its [Relay STATUS](https://github.com/gemvc/infrasible-monitoring-server/blob/main/docs/STATUS.md). This document is the executable **wire contract**, not a deployment certification.
 
-Lab proof (2026-10-19): published Agent **v0.3.8** completed `agent_hello` → `hello_accepted` → `type: live` + application heartbeats against an mTLS mock Bridge. Later releases keep the same Live wire unless [STATUS.md](../STATUS.md) says otherwise; metric keys may vary with `enabled_families`.
+The 2026-10-19 Agent v0.3.8 mTLS/mock-Bridge Hello/heartbeat test remains a historical lab fact, not the latest central-integration verdict. An operator reported the integrated Agent → Relay → Desktop Live path working on 2026-10-23; no production PKI or Persistence acceptance follows from that observation.
 
 ---
 
